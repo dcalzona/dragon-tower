@@ -119,6 +119,12 @@ export class InputManager {
     let mx = 0;
     let my = 0;
 
+    // Si riparte sempre da fermo. Senza questo, se la modalità è "controller" ma
+    // il pad non risponde — scollegato, addormentato, oppure mai collegato perché
+    // si gioca col dito — nessuno dei due rami sotto viene eseguito e l'attacco
+    // resta congelato all'ultimo valore: il tasto fuoco rimane premuto per sempre.
+    s.attack = false;
+
     if (useKeyboard) {
       for (const code of this.keys) {
         const dir = KEY_MAP[code];

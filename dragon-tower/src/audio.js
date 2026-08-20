@@ -211,6 +211,29 @@ export class AudioEngine {
     clearTimeout(this._swapTimer);
   }
 
+  /**
+   * Sospende tutto quando l'app finisce in secondo piano. Senza questo la musica
+   * continua a suonare a icona ridotta e l'unico modo per zittirla è chiudere il
+   * gioco. Ferma anche lo scheduler, altrimenti continuerebbe a creare note.
+   */
+  suspend() {
+    if (!this.ctx) return;
+    this._stepSalvato = this.step;
+    this._suonavaPrima = this.playing;
+    this.stopMusic();
+    if (this.ctx.state === 'running') this.ctx.suspend();
+  }
+
+  /** Riprende da dov'era, senza far ripartire il brano dall'inizio. */
+  resume() {
+    if (!this.ctx) return;
+    if (this.ctx.state === 'suspended') this.ctx.resume();
+    if (this._suonavaPrima && this.musicOn) {
+      this.startMusic();
+      this.step = this._stepSalvato || 0;
+    }
+  }
+
   /** Cicla musica+effetti → solo effetti → muto. */
   cycleMode() {
     const order = ['full', 'sfx', 'off'];

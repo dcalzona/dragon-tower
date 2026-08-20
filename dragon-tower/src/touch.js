@@ -66,6 +66,17 @@ export class TouchControls {
     this.canvas.addEventListener('pointercancel', (e) => this._up(e), opts);
     this.canvas.addEventListener('pointerleave', (e) => this._up(e), opts);
     this.canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+
+    // Rete di sicurezza: se il dito viene "rubato" — una gesture di sistema che
+    // richiama le barre, l'app mandata in secondo piano, una telefonata — il
+    // pointerup sul canvas può non arrivare mai, e la pressione resterebbe
+    // appesa: il tasto d'attacco continuerebbe a sparare da solo.
+    window.addEventListener('pointerup', (e) => this._up(e));
+    window.addEventListener('pointercancel', (e) => this._up(e));
+    window.addEventListener('blur', () => this.clear());
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden) this.clear();
+    });
   }
 
   _logical(e) {

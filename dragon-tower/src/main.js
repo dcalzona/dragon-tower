@@ -127,6 +127,24 @@ function leaveSplash() {
 window.addEventListener('keydown', leaveSplash);
 window.addEventListener('pointerdown', leaveSplash);
 
+/**
+ * App in secondo piano: si zittisce tutto e si mette in pausa la partita.
+ * Il silenzio è il motivo principale — la musica continuava a suonare a icona
+ * ridotta — ma mettere in pausa evita anche di tornare e trovarsi morti.
+ * Al rientro non si riprende da soli: la pausa resta, e riparte il giocatore.
+ */
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) {
+    audio.suspend();
+    if (appState === 'playing' && game && game.state === 'playing') {
+      appState = 'paused';
+    }
+  } else {
+    audio.resume();
+  }
+});
+window.addEventListener('pagehide', () => audio.suspend());
+
 function startGame() {
   input.mode = menu.useGamepad ? 'gamepad' : 'keyboard';
   game = new Game(menu.difficulty, audio);
