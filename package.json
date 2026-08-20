@@ -1,0 +1,20 @@
+{
+  "name": "dragon-tower",
+  "version": "1.0.0",
+  "description": "Action-roguelike gotico a 30 piani, in JavaScript puro.",
+  "private": true,
+  "scripts": {
+    "serve": "python dragon-tower/serve.py",
+    "sync": "cap sync android",
+    "apk": "cap sync android && cd android && gradlew.bat assembleDebug",
+    "apri-android": "cap open android"
+  },
+  "dependencies": {
+    "@capacitor/android": "^8.5.0",
+    "@capacitor/core": "^8.5.0"
+  },
+  "devDependencies": {
+    "@capacitor/assets": "^3.0.5",
+    "@capacitor/cli": "^8.5.0"
+  }
+}

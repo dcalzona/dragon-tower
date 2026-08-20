@@ -1,0 +1,11 @@
+{
+  "appId": "com.dcalzona.dragontower",
+  "appName": "Dragon Tower",
+  "webDir": "dragon-tower",
+  "backgroundColor": "#080b12",
+  "android": {
+    "backgroundColor": "#080b12",
+    "allowMixedContent": false,
+    "webContentsDebuggingEnabled": true
+  }
+}

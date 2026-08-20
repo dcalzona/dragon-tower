@@ -19,6 +19,35 @@ Poi apri <http://localhost:5180>.
 Il server serve i file disabilitando la cache del browser: con il normale
 `python -m http.server` le modifiche ai moduli ES non si vedono al ricaricamento.
 
+Online su GitHub Pages: <https://dcalzona.github.io/dragon-tower/>
+
+## App Android
+
+Il gioco gira anche come app, senza barre di sistema e bloccato in orizzontale.
+Non c'è un secondo progetto: Capacitor impacchetta **la stessa cartella**
+`dragon-tower/`, quindi la versione per PC e quella per telefono restano un
+unico codice che si adatta.
+
+```bash
+npm install
+```
+
+```bash
+npm run apk
+```
+
+L'APK finisce in `android/app/build/outputs/apk/debug/app-debug.apk`.
+
+Serve Android Studio (per JDK e SDK). Se Gradle non trova Java, punta
+`JAVA_HOME` al runtime incluso in Android Studio:
+`C:\Program Files\Android\Android Studio\jbr`.
+
+Per rigenerare icona e schermata d'avvio dopo aver modificato il disegno:
+
+```bash
+python tools/genera_icone.py && npx capacitor-assets generate --android
+```
+
 ## Comandi
 
 | Azione | Tastiera | Controller |

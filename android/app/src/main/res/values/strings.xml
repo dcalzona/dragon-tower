@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Dragon Tower</string>
+    <string name="title_activity_main">Dragon Tower</string>
+    <string name="package_name">com.dcalzona.dragontower</string>
+    <string name="custom_url_scheme">com.dcalzona.dragontower</string>
+</resources>
