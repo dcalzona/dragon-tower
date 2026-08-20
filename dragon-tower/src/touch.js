@@ -245,8 +245,16 @@ export class TouchControls {
 
       let colore = PALETTE.player;
       let attivo = true;
+      let pulsazione = 1;
       if (b.id === 'potion') {
-        colore = '#63e6be';
+        // La pozione porta anche lo stato della vita: cambia colore e pulsa quando
+        // scende, così l'allarme arriva dove il pollice sta già guardando.
+        const vita = game ? game.player.hp / game.player.maxHp : 1;
+        colore = vita < 0.3 ? '#ff6b6b' : vita < 0.5 ? '#ffa94d' : '#63e6be';
+        if (vita < 0.5) {
+          const ritmo = vita < 0.3 ? 130 : 210;
+          pulsazione = 0.55 + 0.45 * Math.sin(ora / ritmo);
+        }
         attivo = game && game.player.potions > 0;
       } else if (b.id === 'transform') {
         colore = DRAGON.color;
@@ -258,21 +266,38 @@ export class TouchControls {
       const scala = giu ? 0.93 : 1 + eco * 0.06;
       const r = b.r * scala;
 
-      ctx.globalAlpha = attivo ? (giu ? 0.4 : 0.22) : 0.1;
+      ctx.globalAlpha = (attivo ? (giu ? 0.4 : 0.22) : 0.1) * pulsazione;
       ctx.fillStyle = colore;
       ctx.beginPath();
       ctx.arc(b.x, b.y, r, 0, Math.PI * 2);
       ctx.fill();
 
-      ctx.globalAlpha = attivo ? (giu ? 0.95 : 0.6) : 0.22;
+      ctx.globalAlpha = (attivo ? (giu ? 0.95 : 0.6) : 0.22) * pulsazione;
       ctx.strokeStyle = colore;
       ctx.lineWidth = unit(b.id === 'attack' ? 2.5 : 2);
       ctx.beginPath();
       ctx.arc(b.x, b.y, r, 0, Math.PI * 2);
       ctx.stroke();
 
-      ctx.globalAlpha = attivo ? 0.92 : 0.28;
+      ctx.globalAlpha = (attivo ? 0.92 : 0.28) * pulsazione;
       this._glyph(ctx, b.id, b.x, b.y, r, colore, game);
+
+      // Anello della vita attorno alla pozione: sostituisce la barra tolta
+      // dall'angolo. Resta ben visibile anche a pozioni finite, perché è proprio
+      // allora che sapere quanta vita resta conta di più.
+      if (b.id === 'potion' && game) {
+        const vita = Math.max(0, game.player.hp / game.player.maxHp);
+        ctx.lineWidth = unit(4);
+        ctx.strokeStyle = colore;
+        ctx.globalAlpha = 0.2;
+        ctx.beginPath();
+        ctx.arc(b.x, b.y, r * 1.28, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.globalAlpha = 0.95 * pulsazione;
+        ctx.beginPath();
+        ctx.arc(b.x, b.y, r * 1.28, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * vita);
+        ctx.stroke();
+      }
     });
 
     ctx.restore();
@@ -334,20 +359,33 @@ export class TouchControls {
       ctx.quadraticCurveTo(x - r * 0.14, y + r * 0.5, x - r * 0.22, y + r * 0.3);
       ctx.quadraticCurveTo(x - r * 0.46, y - r * 0.06, x, y - r * 0.52);
       ctx.fill();
-      // quando è carica, un anello segnala che si può usare
-      if (game && game.player.dragonCharge >= 1 && game.player.dragonTimer <= 0) {
-        ctx.globalAlpha *= 0.55 + 0.45 * Math.sin(performance.now() / 160);
-        ctx.lineWidth = r * 0.12;
-        ctx.beginPath();
-        ctx.arc(x, y, r * 1.24, 0, Math.PI * 2);
-        ctx.stroke();
-      } else if (game && game.player.dragonTimer <= 0) {
-        // altrimenti mostra quanto manca
-        ctx.globalAlpha *= 0.8;
-        ctx.lineWidth = r * 0.12;
-        ctx.beginPath();
-        ctx.arc(x, y, r * 1.24, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * game.player.dragonCharge);
-        ctx.stroke();
+      if (game) {
+        const p = game.player;
+        ctx.lineWidth = r * 0.14;
+        if (p.dragonTimer > 0) {
+          // In forma di drago l'anello diventa il tempo che resta.
+          ctx.strokeStyle = DRAGON.colorDeep;
+          ctx.globalAlpha = 0.95;
+          ctx.beginPath();
+          ctx.arc(x, y, r * 1.28, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * (p.dragonTimer / DRAGON.duration));
+          ctx.stroke();
+        } else if (p.dragonCharge >= 1) {
+          // carica: anello pieno che pulsa, si può usare
+          ctx.globalAlpha *= 0.55 + 0.45 * Math.sin(performance.now() / 160);
+          ctx.beginPath();
+          ctx.arc(x, y, r * 1.28, 0, Math.PI * 2);
+          ctx.stroke();
+        } else {
+          // altrimenti mostra quanto manca
+          ctx.globalAlpha = 0.25;
+          ctx.beginPath();
+          ctx.arc(x, y, r * 1.28, 0, Math.PI * 2);
+          ctx.stroke();
+          ctx.globalAlpha = 0.85;
+          ctx.beginPath();
+          ctx.arc(x, y, r * 1.28, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * p.dragonCharge);
+          ctx.stroke();
+        }
       }
     } else if (id === 'pause') {
       ctx.fillRect(x - r * 0.34, y - r * 0.4, r * 0.24, r * 0.8);

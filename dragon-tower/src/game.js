@@ -192,7 +192,8 @@ export class Game {
 
   addLog(text, color = null) {
     this.log.unshift({ text, color });
-    if (this.log.length > 7) this.log.pop();
+    // Cinque righe: abbastanza per seguire cosa succede, poco per coprire la mappa.
+    if (this.log.length > 5) this.log.pop();
   }
 
   addFloatingText(x, y, text, color) {

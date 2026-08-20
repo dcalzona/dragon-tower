@@ -23,10 +23,25 @@ function areaSicura(camera) {
 }
 
 export function drawHUD(ctx, game, camera, opts) {
-  const { potionKey = 'Q', audioLabel = 'Musica + effetti', audioFull = true } = opts || {};
+  const { potionKey = 'Q', audioLabel = 'Musica + effetti', audioFull = true, compact = false } = opts || {};
   const p = game.player;
   const { off, view } = areaSicura(camera);
   const pad = 18;
+
+  /**
+   * Su telefono l'interfaccia vive sui pulsanti a schermo: la vita è l'anello
+   * attorno alla pozione, la metamorfosi quello attorno al drago, e tutto il
+   * resto sta nel menu di pausa. Qui restano solo la cronaca, le notifiche e la
+   * barra del boss — così i pannelli non coprono più la stanza.
+   */
+  if (compact) {
+    drawBossBar(ctx, game, view);
+    ctx.save();
+    ctx.translate(off.left, off.top);
+    drawEventFeed(ctx, game, view, pad);
+    ctx.restore();
+    return;
+  }
 
   // Spostamento unico: da qui in poi tutto il disegno è già dentro l'area sicura.
   ctx.save();
@@ -445,16 +460,131 @@ export function drawEndScreen(ctx, camera, game, title, color, hint, ready = tru
   ctx.restore();
 }
 
-export function drawOverlay(ctx, camera, title, subtitle, color) {
+/**
+ * Menu di pausa: raccoglie tutto ciò che è stato tolto dallo schermo di gioco —
+ * vita, statistiche, esplorazione — e i comandi che sul telefono non hanno un
+ * tasto, l'audio per primo. Restituisce le zone toccabili.
+ */
+export function drawPauseScreen(ctx, camera, game, opts = {}) {
+  const p = game.player;
+  const s = game.stats;
+  const zones = [];
+
   ctx.save();
-  ctx.fillStyle = 'rgba(8, 11, 18, 0.82)';
+  ctx.fillStyle = 'rgba(8, 11, 18, 0.9)';
   ctx.fillRect(0, 0, camera.w, camera.h);
+
+  const panelW = Math.min(540, camera.w - 60);
+  const panelH = Math.min(430, camera.h - 40);
+  const x = (camera.w - panelW) / 2;
+  const y = (camera.h - panelH) / 2;
+  const cx = camera.w / 2;
+
+  ctx.fillStyle = 'rgba(14, 19, 31, 0.97)';
+  roundRect(ctx, x, y, panelW, panelH, 16);
+  ctx.fill();
+  ctx.strokeStyle = PALETTE.player;
+  ctx.globalAlpha = 0.5;
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+  ctx.globalAlpha = 1;
+
   ctx.textAlign = 'center';
-  ctx.fillStyle = color;
-  ctx.font = 'bold 46px "Segoe UI", system-ui, sans-serif';
-  ctx.fillText(title, camera.w / 2, camera.h / 2 - 10);
+  ctx.fillStyle = PALETTE.player;
+  ctx.font = 'bold 30px "Segoe UI", system-ui, sans-serif';
+  ctx.fillText('PAUSA', cx, y + 46);
+
+  ctx.fillStyle = game.difficulty.color;
+  ctx.font = '12px "Segoe UI", system-ui, sans-serif';
+  ctx.fillText(`${game.difficulty.name.toUpperCase()} · PIANO ${game.depth} DI 30`, cx, y + 68);
+
+  // Vita, in evidenza: è il dato che si toglie dallo schermo di gioco
+  const barW = panelW - 96;
+  const hpFrac = p.hp / p.maxHp;
+  ctx.textAlign = 'left';
   ctx.fillStyle = PALETTE.textDim;
-  ctx.font = '16px "Segoe UI", system-ui, sans-serif';
-  ctx.fillText(subtitle, camera.w / 2, camera.h / 2 + 28);
+  ctx.font = '12px "Segoe UI", system-ui, sans-serif';
+  ctx.fillText('VITA', x + 48, y + 96);
+  ctx.textAlign = 'right';
+  ctx.fillStyle = hpFrac < 0.3 ? '#ff6b6b' : hpFrac < 0.5 ? '#ffa94d' : PALETTE.text;
+  ctx.font = 'bold 13px "Segoe UI", system-ui, sans-serif';
+  ctx.fillText(`${p.hp} / ${p.maxHp}`, x + 48 + barW, y + 96);
+  bar(ctx, x + 48, y + 104, barW, 11, hpFrac, PALETTE.hp);
+
+  ctx.textAlign = 'left';
+  ctx.fillStyle = PALETTE.textDim;
+  ctx.font = '11px "Segoe UI", system-ui, sans-serif';
+  ctx.fillText(`ESPERIENZA · livello ${p.level}`, x + 48, y + 134);
+  bar(ctx, x + 48, y + 140, barW, 7, p.xp / p.xpToNext, PALETTE.xp);
+
+  const tier = game.speedTier > 0 ? SPEED_TIERS[game.speedTier - 1] : null;
+  const voci = [
+    ['Attacco', `${p.atk}`],
+    ['Difesa', `${p.def}`],
+    ['Pozioni', `${p.potions}`],
+    ['Metamorfosi', p.dragonTimer > 0 ? `attiva · ${p.dragonTimer.toFixed(0)}s` : `${Math.round(p.dragonCharge * 100)}%`],
+    ['Mappa esplorata', `${Math.round(game.exploredRatio * 100)}%`],
+    ['Velocità', tier ? `${tier.name} ×${tier.mult}` : 'normale'],
+    ['Nemici abbattuti', `${s.uccisioni}`],
+    ['Guardiani', `${s.bossAbbattuti} / 3`],
+  ];
+
+  const colW = (panelW - 96) / 2;
+  const startY = y + 172;
+  const rowH = 24;
+  voci.forEach(([etichetta, valore], i) => {
+    const col = i % 2;
+    const row = Math.floor(i / 2);
+    const rx = x + 48 + col * colW;
+    const ry = startY + row * rowH;
+    ctx.textAlign = 'left';
+    ctx.fillStyle = PALETTE.textDim;
+    ctx.font = '12.5px "Segoe UI", system-ui, sans-serif';
+    ctx.fillText(etichetta, rx, ry);
+    ctx.textAlign = 'right';
+    ctx.fillStyle = PALETTE.text;
+    ctx.font = 'bold 12.5px "Segoe UI", system-ui, sans-serif';
+    ctx.fillText(valore, rx + colW - 20, ry);
+  });
+
+  // Comandi toccabili
+  const btnY = y + panelH - 68;
+  const btnH = 44;
+  const gap = 10;
+  const audioW = panelW - 96;
+  zones.push({ kind: 'audio', x: x + 48, y: btnY - 52, w: audioW, h: btnH });
+  ctx.fillStyle = opts.audioFull ? 'rgba(78, 205, 196, 0.14)' : 'rgba(255,255,255,0.05)';
+  roundRect(ctx, x + 48, btnY - 52, audioW, btnH, 10);
+  ctx.fill();
+  ctx.strokeStyle = opts.audioFull ? PALETTE.player : 'rgba(255,255,255,0.16)';
+  ctx.lineWidth = 1.2;
+  ctx.stroke();
+  ctx.textAlign = 'center';
+  ctx.fillStyle = opts.audioFull ? PALETTE.player : PALETTE.textDim;
+  ctx.font = 'bold 14px "Segoe UI", system-ui, sans-serif';
+  ctx.fillText(`♪  ${opts.audioLabel || 'Audio'}`, cx, btnY - 52 + 28);
+
+  const half = (audioW - gap) / 2;
+  const azioni = [
+    { kind: 'resume', label: opts.resumeLabel || 'RIPRENDI', color: PALETTE.player, x: x + 48 },
+    { kind: 'menu', label: opts.menuLabel || 'MENU', color: '#8a94ad', x: x + 48 + half + gap },
+  ];
+  azioni.forEach((a) => {
+    zones.push({ kind: a.kind, x: a.x, y: btnY, w: half, h: btnH });
+    ctx.fillStyle = 'rgba(255,255,255,0.05)';
+    roundRect(ctx, a.x, btnY, half, btnH, 10);
+    ctx.fill();
+    ctx.strokeStyle = a.color;
+    ctx.globalAlpha = 0.6;
+    ctx.lineWidth = 1.4;
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = a.color;
+    ctx.font = 'bold 14px "Segoe UI", system-ui, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(a.label, a.x + half / 2, btnY + 28);
+  });
+
   ctx.restore();
+  return zones;
 }

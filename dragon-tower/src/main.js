@@ -4,7 +4,7 @@ import { AudioEngine } from './audio.js';
 import { InputManager } from './input.js';
 import { Menu } from './menu.js';
 import { TouchControls } from './touch.js';
-import { drawHUD, drawNotifications, drawOverlay, drawEndScreen } from './hud.js';
+import { drawHUD, drawNotifications, drawPauseScreen, drawEndScreen } from './hud.js';
 import {
   drawWorld,
   drawItems,
@@ -25,6 +25,7 @@ const menu = new Menu(input, audio);
 
 let touch = null;      // creato dopo la telecamera
 let touchTap = null;   // ultimo tocco non finito su un comando
+let pauseZones = [];   // zone toccabili del menu di pausa, dall'ultimo disegno
 
 let game = null;
 let appState = 'splash'; // splash | menu | playing | paused
@@ -202,7 +203,23 @@ function update(dt) {
   }
 
   if (appState === 'paused') {
-    if (input.consume('pause') || input.consume('confirm') || tap) {
+    if (tap) {
+      const z = pauseZones.find(
+        (z) => tap.x >= z.x && tap.x <= z.x + z.w && tap.y >= z.y && tap.y <= z.y + z.h
+      );
+      if (z && z.kind === 'audio') {
+        audio.cycleMode();
+        audio.sfx('menu');
+      } else if (z && z.kind === 'menu') {
+        backToMenu();
+      } else {
+        // Fuori dai comandi il tocco riprende la partita.
+        appState = 'playing';
+        audio.sfx('menu');
+      }
+      return;
+    }
+    if (input.consume('pause') || input.consume('confirm')) {
       appState = 'playing';
       audio.sfx('menu');
     }
@@ -272,6 +289,7 @@ function drawGame() {
     transformKey: touch.enabled ? null : input.mode === 'gamepad' ? '△' : 'E',
     audioLabel: audio.modeLabel,
     audioFull: audio.mode === 'full',
+    compact: touch.enabled,
   });
 
   drawNotifications(ctx, camera, game.notifications);
@@ -284,9 +302,14 @@ function drawGame() {
   } else if (game.state === 'won') {
     drawEndScreen(ctx, camera, game, 'IL CRISTALLO È TUO', '#ffd43b', `Tocca ${restartKey} per rigiocare`, pronto);
   } else if (appState === 'paused') {
-    const resumeKey = input.mode === 'gamepad' ? 'OPTIONS' : 'P';
-    const menuKey = input.mode === 'gamepad' ? 'L1' : 'R';
-    drawOverlay(ctx, camera, 'PAUSA', `${resumeKey} riprendi · ${menuKey} torna al menu`, PALETTE.player);
+    const resumeKey = touch.enabled ? 'RIPRENDI' : input.mode === 'gamepad' ? 'RIPRENDI · OPTIONS' : 'RIPRENDI · P';
+    const menuKey = touch.enabled ? 'MENU' : input.mode === 'gamepad' ? 'MENU · L1' : 'MENU · R';
+    pauseZones = drawPauseScreen(ctx, camera, game, {
+      audioLabel: audio.modeLabel,
+      audioFull: audio.mode === 'full',
+      resumeLabel: resumeKey,
+      menuLabel: menuKey,
+    });
   }
 }
 
