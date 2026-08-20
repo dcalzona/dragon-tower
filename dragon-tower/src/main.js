@@ -210,6 +210,9 @@ function update(dt) {
       if (z && z.kind === 'audio') {
         audio.cycleMode();
         audio.sfx('menu');
+      } else if (z && z.kind === 'opacity') {
+        touch.cycleOpacity();
+        audio.sfx('menu');
       } else if (z && z.kind === 'menu') {
         backToMenu();
       } else {
@@ -309,6 +312,8 @@ function drawGame() {
       audioFull: audio.mode === 'full',
       resumeLabel: resumeKey,
       menuLabel: menuKey,
+      // La visibilità dei comandi si regola solo dove i comandi ci sono.
+      touchOpacity: touch.enabled ? touch.opacity : null,
     });
   }
 }

@@ -15,6 +15,24 @@ const MARGIN = 24;
 
 const SAFE_ZERO = { top: 0, right: 0, bottom: 0, left: 0 };
 
+/**
+ * Quanto marcati appaiono i comandi a schermo. Chiamata "visibilità" e non
+ * "trasparenza" per evitare l'ambiguità: qui più alto vuol dire più visibile.
+ */
+export const OPACITY_LEVELS = [0.1, 0.3, 0.5, 0.7, 0.9];
+const OPACITY_KEY = 'dragon-tower:visibilita-tasti';
+const OPACITY_DEFAULT = 0.7;
+
+function leggiOpacita() {
+  try {
+    const v = parseFloat(localStorage.getItem(OPACITY_KEY));
+    if (OPACITY_LEVELS.includes(v)) return v;
+  } catch {
+    // spazio di archiviazione non disponibile: si continua col valore predefinito
+  }
+  return OPACITY_DEFAULT;
+}
+
 export class TouchControls {
   constructor(canvas, camera) {
     this.canvas = canvas;
@@ -29,6 +47,9 @@ export class TouchControls {
 
     this.state = { moveX: 0, moveY: 0, attack: false };
     this.pressed = new Set();
+
+    /** Visibilità dei comandi, scelta dall'utente e ricordata fra le partite. */
+    this.opacity = leggiOpacita();
 
     this.stick = null; // { id, baseX, baseY, x, y }
     this.holds = new Map(); // pointerId -> id del pulsante premuto
@@ -179,6 +200,18 @@ export class TouchControls {
     return s;
   }
 
+  /** Passa al livello di visibilità successivo e lo ricorda. */
+  cycleOpacity() {
+    const i = OPACITY_LEVELS.indexOf(this.opacity);
+    this.opacity = OPACITY_LEVELS[(i + 1) % OPACITY_LEVELS.length];
+    try {
+      localStorage.setItem(OPACITY_KEY, String(this.opacity));
+    } catch {
+      // se non si può salvare, la scelta vale comunque per questa sessione
+    }
+    return this.opacity;
+  }
+
   consume(azione) {
     if (this.pressed.has(azione)) {
       this.pressed.delete(azione);
@@ -202,6 +235,8 @@ export class TouchControls {
     if (!this.enabled || this.mode !== 'game') return;
     const { buttons, stickR, unit } = this.layout();
     const ora = performance.now();
+    // Un solo punto di verita': ogni opacita' assoluta passa di qui.
+    const A = (v) => v * this.opacity;
 
     ctx.save();
 
@@ -216,20 +251,20 @@ export class TouchControls {
         dy = (dy / d) * stickR;
       }
 
-      ctx.globalAlpha = 0.24;
+      ctx.globalAlpha = A(0.24);
       ctx.fillStyle = PALETTE.player;
       ctx.beginPath();
       ctx.arc(baseX, baseY, stickR, 0, Math.PI * 2);
       ctx.fill();
 
-      ctx.globalAlpha = 0.5;
+      ctx.globalAlpha = A(0.5);
       ctx.strokeStyle = PALETTE.player;
       ctx.lineWidth = unit(2);
       ctx.beginPath();
       ctx.arc(baseX, baseY, stickR, 0, Math.PI * 2);
       ctx.stroke();
 
-      ctx.globalAlpha = 0.85;
+      ctx.globalAlpha = A(0.85);
       ctx.fillStyle = PALETTE.player;
       ctx.beginPath();
       ctx.arc(baseX + dx, baseY + dy, stickR * 0.42, 0, Math.PI * 2);
@@ -266,20 +301,20 @@ export class TouchControls {
       const scala = giu ? 0.93 : 1 + eco * 0.06;
       const r = b.r * scala;
 
-      ctx.globalAlpha = (attivo ? (giu ? 0.4 : 0.22) : 0.1) * pulsazione;
+      ctx.globalAlpha = A((attivo ? (giu ? 0.4 : 0.22) : 0.1) * pulsazione);
       ctx.fillStyle = colore;
       ctx.beginPath();
       ctx.arc(b.x, b.y, r, 0, Math.PI * 2);
       ctx.fill();
 
-      ctx.globalAlpha = (attivo ? (giu ? 0.95 : 0.6) : 0.22) * pulsazione;
+      ctx.globalAlpha = A((attivo ? (giu ? 0.95 : 0.6) : 0.22) * pulsazione);
       ctx.strokeStyle = colore;
       ctx.lineWidth = unit(b.id === 'attack' ? 2.5 : 2);
       ctx.beginPath();
       ctx.arc(b.x, b.y, r, 0, Math.PI * 2);
       ctx.stroke();
 
-      ctx.globalAlpha = (attivo ? 0.92 : 0.28) * pulsazione;
+      ctx.globalAlpha = A((attivo ? 0.92 : 0.28) * pulsazione);
       this._glyph(ctx, b.id, b.x, b.y, r, colore, game);
 
       // Anello della vita attorno alla pozione: sostituisce la barra tolta
@@ -289,11 +324,11 @@ export class TouchControls {
         const vita = Math.max(0, game.player.hp / game.player.maxHp);
         ctx.lineWidth = unit(4);
         ctx.strokeStyle = colore;
-        ctx.globalAlpha = 0.2;
+        ctx.globalAlpha = A(0.2);
         ctx.beginPath();
         ctx.arc(b.x, b.y, r * 1.28, 0, Math.PI * 2);
         ctx.stroke();
-        ctx.globalAlpha = 0.95 * pulsazione;
+        ctx.globalAlpha = A(0.95 * pulsazione);
         ctx.beginPath();
         ctx.arc(b.x, b.y, r * 1.28, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * vita);
         ctx.stroke();
@@ -365,7 +400,7 @@ export class TouchControls {
         if (p.dragonTimer > 0) {
           // In forma di drago l'anello diventa il tempo che resta.
           ctx.strokeStyle = DRAGON.colorDeep;
-          ctx.globalAlpha = 0.95;
+          ctx.globalAlpha = 0.95 * this.opacity;
           ctx.beginPath();
           ctx.arc(x, y, r * 1.28, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * (p.dragonTimer / DRAGON.duration));
           ctx.stroke();
@@ -377,11 +412,11 @@ export class TouchControls {
           ctx.stroke();
         } else {
           // altrimenti mostra quanto manca
-          ctx.globalAlpha = 0.25;
+          ctx.globalAlpha = 0.25 * this.opacity;
           ctx.beginPath();
           ctx.arc(x, y, r * 1.28, 0, Math.PI * 2);
           ctx.stroke();
-          ctx.globalAlpha = 0.85;
+          ctx.globalAlpha = 0.85 * this.opacity;
           ctx.beginPath();
           ctx.arc(x, y, r * 1.28, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * p.dragonCharge);
           ctx.stroke();

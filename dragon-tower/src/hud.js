@@ -475,7 +475,10 @@ export function drawPauseScreen(ctx, camera, game, opts = {}) {
   ctx.fillRect(0, 0, camera.w, camera.h);
 
   const panelW = Math.min(540, camera.w - 60);
-  const panelH = Math.min(430, camera.h - 40);
+  // La riga della visibilità, quando c'è, ha bisogno del suo spazio: senza
+  // allungare il pannello finirebbe sopra l'ultima riga di statistiche.
+  const conVisibilita = opts.touchOpacity !== undefined && opts.touchOpacity !== null;
+  const panelH = Math.min(conVisibilita ? 484 : 430, camera.h - 40);
   const x = (camera.w - panelW) / 2;
   const y = (camera.h - panelH) / 2;
   const cx = camera.w / 2;
@@ -563,6 +566,52 @@ export function drawPauseScreen(ctx, camera, game, opts = {}) {
   ctx.fillStyle = opts.audioFull ? PALETTE.player : PALETTE.textDim;
   ctx.font = 'bold 14px "Segoe UI", system-ui, sans-serif';
   ctx.fillText(`♪  ${opts.audioLabel || 'Audio'}`, cx, btnY - 52 + 28);
+
+  // Visibilità dei comandi a schermo: solo dove i comandi esistono davvero.
+  if (opts.touchOpacity !== undefined && opts.touchOpacity !== null) {
+    const oy = btnY - 104;
+    zones.push({ kind: 'opacity', x: x + 48, y: oy, w: audioW, h: btnH });
+    ctx.fillStyle = 'rgba(255,255,255,0.05)';
+    roundRect(ctx, x + 48, oy, audioW, btnH, 10);
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(255,255,255,0.16)';
+    ctx.lineWidth = 1.2;
+    ctx.stroke();
+
+    ctx.textAlign = 'left';
+    ctx.fillStyle = PALETTE.textDim;
+    ctx.font = 'bold 13px "Segoe UI", system-ui, sans-serif';
+    ctx.fillText('VISIBILITÀ TASTI', x + 66, oy + 28);
+
+    ctx.textAlign = 'right';
+    ctx.fillStyle = PALETTE.text;
+    ctx.fillText(`${Math.round(opts.touchOpacity * 100)}%`, x + 48 + audioW - 62, oy + 28);
+
+    // Anteprima: un pulsante in miniatura alla visibilità scelta, così si vede
+    // subito l'effetto senza dover uscire dalla pausa.
+    const px = x + 48 + audioW - 32;
+    const py = oy + btnH / 2;
+    const pr = 13;
+    ctx.save();
+    ctx.globalAlpha = 0.22 * opts.touchOpacity;
+    ctx.fillStyle = PALETTE.player;
+    ctx.beginPath();
+    ctx.arc(px, py, pr, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.globalAlpha = 0.6 * opts.touchOpacity;
+    ctx.strokeStyle = PALETTE.player;
+    ctx.lineWidth = 1.6;
+    ctx.beginPath();
+    ctx.arc(px, py, pr, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.globalAlpha = 0.92 * opts.touchOpacity;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(px - pr * 0.4, py + pr * 0.4);
+    ctx.lineTo(px + pr * 0.4, py - pr * 0.4);
+    ctx.stroke();
+    ctx.restore();
+  }
 
   const half = (audioW - gap) / 2;
   const azioni = [
