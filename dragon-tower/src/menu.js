@@ -37,18 +37,9 @@ export class Menu {
     }
 
     const dir = (input.consumeMenu('right') ? 1 : 0) - (input.consumeMenu('left') ? 1 : 0);
-    if (dir !== 0) {
-      if (ROWS[this.row] === 'controls') {
-        this.controlIndex = (this.controlIndex + dir + 2) % 2;
-        this.audio.sfx('menu');
-      } else if (ROWS[this.row] === 'difficulty') {
-        this.difficultyIndex = (this.difficultyIndex + dir + DIFFICULTIES.length) % DIFFICULTIES.length;
-        this.audio.sfx('menu');
-      } else if (ROWS[this.row] === 'audio') {
-        const i = AUDIO_MODES.indexOf(this.audio.mode);
-        this.audio.setMode(AUDIO_MODES[(i + dir + AUDIO_MODES.length) % AUDIO_MODES.length]);
-        this.audio.sfx('menu');
-      }
+    if (dir !== 0 && ROWS[this.row] !== 'start') {
+      this._cycle(dir);
+      this.audio.sfx('menu');
     }
 
     if (input.consume('confirm') || input.consume('attack')) {
@@ -62,7 +53,44 @@ export class Menu {
     }
   }
 
+  /**
+   * Tocco sul menu. Le zone sensibili vengono registrate durante il disegno,
+   * così restano automaticamente allineate a quello che si vede.
+   */
+  handleTap(x, y) {
+    for (const z of this.hitAreas || []) {
+      if (x < z.x || x > z.x + z.w || y < z.y || y > z.y + z.h) continue;
+      if (z.kind === 'start') {
+        this.done = true;
+        this.audio.sfx('confirm');
+      } else if (z.kind === 'left' || z.kind === 'right') {
+        this.row = z.row;
+        this._cycle(z.kind === 'right' ? 1 : -1);
+        this.audio.sfx('menu');
+      } else {
+        // Toccare la riga la seleziona; toccarla di nuovo avanza il valore.
+        if (this.row === z.row) this._cycle(1);
+        this.row = z.row;
+        this.audio.sfx('menu');
+      }
+      return true;
+    }
+    return false;
+  }
+
+  _cycle(dir) {
+    const riga = ROWS[this.row];
+    if (riga === 'controls') this.controlIndex = (this.controlIndex + dir + 2) % 2;
+    else if (riga === 'difficulty')
+      this.difficultyIndex = (this.difficultyIndex + dir + DIFFICULTIES.length) % DIFFICULTIES.length;
+    else if (riga === 'audio') {
+      const i = AUDIO_MODES.indexOf(this.audio.mode);
+      this.audio.setMode(AUDIO_MODES[(i + dir + AUDIO_MODES.length) % AUDIO_MODES.length]);
+    } else if (riga === 'start') this.done = true;
+  }
+
   draw(ctx, w, h) {
+    this.hitAreas = [];
     ctx.save();
     ctx.fillStyle = PALETTE.void;
     ctx.fillRect(0, 0, w, h);
@@ -100,11 +128,11 @@ export class Menu {
 
     y += 78;
 
-    this._drawRow(ctx, panelX, y, panelW, 'COMANDI', this._controlLabel(), this.row === 0, PALETTE.player);
+    this._drawRow(ctx, panelX, y, panelW, 'COMANDI', this._controlLabel(), this.row === 0, PALETTE.player, 0);
     y += 82;
 
     const diff = this.difficulty;
-    this._drawRow(ctx, panelX, y, panelW, 'DIFFICOLTÀ', diff.name, this.row === 1, diff.color);
+    this._drawRow(ctx, panelX, y, panelW, 'DIFFICOLTÀ', diff.name, this.row === 1, diff.color, 1);
     ctx.textAlign = 'center';
     ctx.fillStyle = PALETTE.textDim;
     ctx.font = '12.5px "Segoe UI", system-ui, sans-serif';
@@ -112,7 +140,7 @@ export class Menu {
     y += 92;
 
     const audioOn = this.audio.mode === 'full';
-    this._drawRow(ctx, panelX, y, panelW, 'AUDIO', this.audio.modeLabel, this.row === 2, audioOn ? PALETTE.player : '#8a94ad');
+    this._drawRow(ctx, panelX, y, panelW, 'AUDIO', this.audio.modeLabel, this.row === 2, audioOn ? PALETTE.player : '#8a94ad', 2);
     y += 78;
 
     // Pulsante avvio
@@ -120,6 +148,7 @@ export class Menu {
     const btnW = 240;
     const btnH = 52;
     const btnX = cx - btnW / 2;
+    this.hitAreas.push({ kind: 'start', row: 3, x: btnX, y, w: btnW, h: btnH });
     ctx.fillStyle = selected ? 'rgba(78, 205, 196, 0.18)' : 'rgba(255,255,255,0.04)';
     roundRect(ctx, btnX, y, btnW, btnH, 12);
     ctx.fill();
@@ -162,7 +191,13 @@ export class Menu {
     return this.controlIndex === 0 ? 'Tastiera' : 'Controller PlayStation';
   }
 
-  _drawRow(ctx, x, y, w, label, value, selected, color) {
+  _drawRow(ctx, x, y, w, label, value, selected, color, rowIndex) {
+    if (rowIndex !== undefined) {
+      this.hitAreas.push({ kind: 'row', row: rowIndex, x, y: y - 6, w, h: 56 });
+      const aw = 46;
+      this.hitAreas.unshift({ kind: 'right', row: rowIndex, x: x + w - aw, y: y - 6, w: aw, h: 56 });
+      this.hitAreas.unshift({ kind: 'left', row: rowIndex, x: x + w - aw * 2, y: y - 6, w: aw, h: 56 });
+    }
     ctx.save();
     ctx.fillStyle = selected ? 'rgba(255,255,255,0.05)' : 'rgba(255,255,255,0.02)';
     roundRect(ctx, x, y - 6, w, 56, 12);

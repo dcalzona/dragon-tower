@@ -64,7 +64,8 @@ export function drawHUD(ctx, game, camera, opts) {
   ctx.fillText(`ATT ${p.atk}   DIF ${p.def}`, pad + 16, pad + 90);
   ctx.textAlign = 'right';
   ctx.fillStyle = p.potions > 0 ? '#63e6be' : PALETTE.textDim;
-  ctx.fillText(`Pozioni: ${p.potions}  [${potionKey}]`, pad + 252, pad + 90);
+  // Col touch il tasto è disegnato a schermo: suggerirne uno da tastiera confonde.
+  ctx.fillText(potionKey ? `Pozioni: ${p.potions}  [${potionKey}]` : `Pozioni: ${p.potions}`, pad + 252, pad + 90);
 
   // Esplorazione del piano + livello di velocità raggiunto
   const ratio = game.exploredRatio;
@@ -143,10 +144,11 @@ export function drawDragonGauge(ctx, game, camera, pad = 18, opts = {}) {
   ctx.textAlign = 'left';
   ctx.font = 'bold 11px "Segoe UI", system-ui, sans-serif';
   ctx.fillStyle = attivo || pronto ? DRAGON.color : PALETTE.textDim;
+  const tasto = opts.transformKey === null ? '' : `  [${opts.transformKey || 'E'}]`;
   const etichetta = attivo
     ? `FORMA DI DRAGO · ${p.dragonTimer.toFixed(1)}s`
     : pronto
-      ? `METAMORFOSI PRONTA  [${opts.transformKey || 'E'}]`
+      ? `METAMORFOSI PRONTA${tasto}`
       : 'METAMORFOSI';
   ctx.fillText(etichetta, x + 16, y + 19);
 
@@ -223,10 +225,11 @@ export function drawEventFeed(ctx, game, camera, pad = 18) {
   const y = camera.h - pad - h;
 
   ctx.save();
-  ctx.fillStyle = 'rgba(10, 14, 23, 0.72)';
+  // Tenuto leggero: la cronaca non deve nascondere la mappa sotto di sé.
+  ctx.fillStyle = 'rgba(10, 14, 23, 0.42)';
   roundRect(ctx, x, y, w, h, 12);
   ctx.fill();
-  ctx.strokeStyle = 'rgba(255,255,255,0.07)';
+  ctx.strokeStyle = 'rgba(255,255,255,0.045)';
   ctx.lineWidth = 1;
   ctx.stroke();
 
@@ -238,7 +241,12 @@ export function drawEventFeed(ctx, game, camera, pad = 18) {
   ctx.font = '14px "Segoe UI", system-ui, sans-serif';
   game.log.forEach((entry, i) => {
     // Le righe più vecchie sbiadiscono, ma restano leggibili.
-    ctx.globalAlpha = Math.max(0.34, 1 - i * 0.13);
+    ctx.globalAlpha = Math.max(0.3, 1 - i * 0.13);
+    // Con il pannello più trasparente il testo ha bisogno di un contorno scuro
+    // per restare leggibile anche sopra un pavimento illuminato.
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = 'rgba(6, 9, 16, 0.75)';
+    ctx.strokeText(entry.text, x + 16, y + 42 + i * lineH);
     ctx.fillStyle = entry.color || PALETTE.text;
     ctx.fillText(entry.text, x + 16, y + 42 + i * lineH);
   });

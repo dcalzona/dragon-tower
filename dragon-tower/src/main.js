@@ -3,6 +3,7 @@ import { Game } from './game.js';
 import { AudioEngine } from './audio.js';
 import { InputManager } from './input.js';
 import { Menu } from './menu.js';
+import { TouchControls } from './touch.js';
 import { drawHUD, drawNotifications, drawOverlay, drawEndScreen } from './hud.js';
 import {
   drawWorld,
@@ -21,6 +22,9 @@ const ctx = canvas.getContext('2d');
 const audio = new AudioEngine();
 const input = new InputManager();
 const menu = new Menu(input, audio);
+
+let touch = null;      // creato dopo la telecamera
+let touchTap = null;   // ultimo tocco non finito su un comando
 
 let game = null;
 let appState = 'splash'; // splash | menu | playing | paused
@@ -102,6 +106,11 @@ new ResizeObserver(resize).observe(canvas);
 window.addEventListener('resize', resize);
 resize();
 
+touch = new TouchControls(canvas, camera);
+touch.onTap = (x, y) => {
+  touchTap = { x, y };
+};
+
 // L'audio può partire solo dopo un gesto dell'utente (policy dei browser).
 function unlockAudio() {
   audio.init();
@@ -137,12 +146,29 @@ function backToMenu() {
 function update(dt) {
   input.pollMenu();
 
+  // I comandi a schermo si mostrano solo mentre si gioca; altrove i tocchi
+  // servono ai menu.
+  touch.mode = appState === 'playing' && game && game.state === 'playing' ? 'game' : 'ui';
+  touch.poll();
+  const tap = touchTap;
+  touchTap = null;
+
+  if (touch.enabled) {
+    const t = touch.state;
+    if (t.moveX !== 0 || t.moveY !== 0) {
+      input.state.moveX = t.moveX;
+      input.state.moveY = t.moveY;
+    }
+    if (t.attack) input.state.attack = true;
+  }
+
   if (input.consume('mute')) {
     audio.cycleMode();
     audio.sfx('menu');
   }
 
   if (appState === 'menu') {
+    if (tap) menu.handleTap(tap.x, tap.y);
     menu.update(dt);
     if (menu.done) startGame();
     return;
@@ -150,13 +176,13 @@ function update(dt) {
 
   if (appState === 'playing') {
     if (game.state === 'playing') {
-      if (input.consume('pause')) {
+      if (input.consume('pause') || touch.consume('pause')) {
         appState = 'paused';
         audio.sfx('menu');
         return;
       }
-      if (input.consume('potion')) game.usePotion();
-      if (input.consume('transform')) game.transform();
+      if (input.consume('potion') || touch.consume('potion')) game.usePotion();
+      if (input.consume('transform') || touch.consume('transform')) game.transform();
       game.update(dt, input.state);
       return;
     }
@@ -165,7 +191,7 @@ function update(dt) {
     if (gameOverAt === null) gameOverAt = time;
     if (time - gameOverAt < GAME_OVER_LOCK) return;
 
-    if (input.consume('restart') || input.consume('confirm') || input.consume('attack')) {
+    if (input.consume('restart') || input.consume('confirm') || input.consume('attack') || tap) {
       game.restart();
       gameOverAt = null;
       audio.setDepth(1, true);
@@ -176,7 +202,7 @@ function update(dt) {
   }
 
   if (appState === 'paused') {
-    if (input.consume('pause') || input.consume('confirm')) {
+    if (input.consume('pause') || input.consume('confirm') || tap) {
       appState = 'playing';
       audio.sfx('menu');
     }
@@ -242,20 +268,21 @@ function drawGame() {
   drawVignette(ctx, camera.w, camera.h);
 
   drawHUD(ctx, game, camera, {
-    potionKey: input.mode === 'gamepad' ? '⭕' : 'Q',
-    transformKey: input.mode === 'gamepad' ? '△' : 'E',
+    potionKey: touch.enabled ? null : input.mode === 'gamepad' ? '⭕' : 'Q',
+    transformKey: touch.enabled ? null : input.mode === 'gamepad' ? '△' : 'E',
     audioLabel: audio.modeLabel,
     audioFull: audio.mode === 'full',
   });
 
   drawNotifications(ctx, camera, game.notifications);
+  touch.draw(ctx, game);
 
-  const restartKey = input.mode === 'gamepad' ? 'X' : 'un tasto';
+  const restartKey = touch.enabled ? 'lo schermo' : input.mode === 'gamepad' ? 'X' : 'un tasto';
   const pronto = gameOverAt !== null && time - gameOverAt >= GAME_OVER_LOCK;
   if (game.state === 'dead') {
-    drawEndScreen(ctx, camera, game, 'SEI CADUTO', '#ff6b6b', `Premi ${restartKey} per ricominciare`, pronto);
+    drawEndScreen(ctx, camera, game, 'SEI CADUTO', '#ff6b6b', `Tocca ${restartKey} per ricominciare`, pronto);
   } else if (game.state === 'won') {
-    drawEndScreen(ctx, camera, game, 'IL CRISTALLO È TUO', '#ffd43b', `Premi ${restartKey} per rigiocare`, pronto);
+    drawEndScreen(ctx, camera, game, 'IL CRISTALLO È TUO', '#ffd43b', `Tocca ${restartKey} per rigiocare`, pronto);
   } else if (appState === 'paused') {
     const resumeKey = input.mode === 'gamepad' ? 'OPTIONS' : 'P';
     const menuKey = input.mode === 'gamepad' ? 'L1' : 'R';
@@ -272,6 +299,7 @@ function frame(now) {
   update(dt);
   // Le pressioni non consumate scadono qui: non devono sopravvivere al frame.
   input.endFrame();
+  touch.pressed.clear();
 
   if (appState === 'splash') {
     drawSplash();
