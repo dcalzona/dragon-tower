@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "dragon-tower",
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["dragon-tower/serve.py", "5180"],
+      "port": 5180
+    }
+  ]
+}

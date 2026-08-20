@@ -1,0 +1,32 @@
+# Dipendenze Node (Capacitor)
+node_modules/
+npm-debug.log*
+yarn-error.log*
+
+# Build Android / Capacitor
+android/.gradle/
+android/build/
+android/app/build/
+android/captures/
+android/local.properties
+android/.idea/
+android/app/src/main/assets/public/
+*.apk
+*.aab
+
+# Chiavi di firma: non devono MAI finire in un repository pubblico
+*.keystore
+*.jks
+keystore.properties
+signing.properties
+
+# Python
+__pycache__/
+*.py[cod]
+
+# Sistema operativo ed editor
+Thumbs.db
+Desktop.ini
+.DS_Store
+.vscode/
+.idea/
