@@ -32,17 +32,71 @@ let time = 0;
 let gameOverAt = null;
 const GAME_OVER_LOCK = 1.1;
 
-const camera = { x: 0, y: 0, w: 0, h: 0 };
+const camera = { x: 0, y: 0, w: 0, h: 0, zoom: 1, safe: { top: 0, right: 0, bottom: 0, left: 0 } };
+
+/**
+ * Spazio di disegno logico minimo. Il cerchio di luce è largo 17 caselle da 34px,
+ * cioè 578px: sotto quell'altezza la torcia verrebbe tagliata sopra e sotto, e
+ * l'interfaccia — pensata in pixel fissi — occuperebbe una fetta enorme dello
+ * schermo. Su un telefono in orizzontale ci sono ~412px logici: troppo pochi.
+ *
+ * Invece di rimpicciolire i font a mano, riduciamo l'intera scala di disegno finché
+ * lo spazio logico non raggiunge queste misure. È lo stesso effetto della "modalità
+ * desktop" del browser — si vede di più e le scritte sono più piccole — ma nitido,
+ * perché continuiamo a disegnare alla risoluzione vera del dispositivo.
+ */
+const DESIGN_MIN_W = 1180;
+const DESIGN_MIN_H = 620;
+
+// In verticale i minimi da orizzontale si azzufferebbero: pretendere 1180px di
+// larghezza su uno schermo stretto rimpicciolirebbe tutto fino all'illeggibile.
+// Il gioco è pensato in orizzontale, ma in verticale deve restare dignitoso.
+const PORTRAIT_MIN_W = 640;
+const PORTRAIT_MIN_H = 1020;
+
+// Oltre questo non si rimpicciolisce più: meglio tagliare qualcosa che rendere
+// l'interfaccia illeggibile su schermi molto piccoli.
+const MIN_ZOOM = 0.5;
+
+// Su schermi ad altissima densità riempire ogni pixel costa caro, e questo gioco
+// usa molti bagliori sfocati. Oltre 2.5x la differenza non si vede, il costo sì.
+const MAX_DPR = 2.5;
+
+function readSafeInsets() {
+  const s = getComputedStyle(document.body);
+  const px = (nome) => parseFloat(s.getPropertyValue(nome)) || 0;
+  return { top: px('--sat'), right: px('--sar'), bottom: px('--sab'), left: px('--sal') };
+}
 
 function resize() {
-  const dpr = window.devicePixelRatio || 1;
-  const w = canvas.clientWidth || window.innerWidth;
-  const h = canvas.clientHeight || window.innerHeight;
-  canvas.width = Math.max(1, Math.round(w * dpr));
-  canvas.height = Math.max(1, Math.round(h * dpr));
-  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  camera.w = w;
-  camera.h = h;
+  const dpr = Math.min(window.devicePixelRatio || 1, MAX_DPR);
+  const cssW = canvas.clientWidth || window.innerWidth;
+  const cssH = canvas.clientHeight || window.innerHeight;
+
+  const orizzontale = cssW >= cssH;
+  const minW = orizzontale ? DESIGN_MIN_W : PORTRAIT_MIN_W;
+  const minH = orizzontale ? DESIGN_MIN_H : PORTRAIT_MIN_H;
+
+  // Mai ingrandire: su schermi ampi resta 1 e il comportamento su PC non cambia.
+  const zoom = Math.max(MIN_ZOOM, Math.min(1, cssW / minW, cssH / minH));
+
+  canvas.width = Math.max(1, Math.round(cssW * dpr));
+  canvas.height = Math.max(1, Math.round(cssH * dpr));
+  ctx.setTransform(dpr * zoom, 0, 0, dpr * zoom, 0, 0);
+
+  camera.zoom = zoom;
+  camera.w = cssW / zoom;
+  camera.h = cssH / zoom;
+
+  // I margini di sicurezza arrivano in pixel CSS: vanno riportati nella stessa
+  // scala del disegno, altrimenti sul telefono sarebbero grandi il doppio.
+  const safe = readSafeInsets();
+  camera.safe = {
+    top: safe.top / zoom,
+    right: safe.right / zoom,
+    bottom: safe.bottom / zoom,
+    left: safe.left / zoom,
+  };
 }
 new ResizeObserver(resize).observe(canvas);
 window.addEventListener('resize', resize);

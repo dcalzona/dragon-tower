@@ -2,20 +2,45 @@
 <html lang="it">
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover"
+    />
     <title>Dragon Tower</title>
     <style>
       * { margin: 0; padding: 0; box-sizing: border-box; }
-      html, body { height: 100%; background: #080b12; overflow: hidden; }
+      html, body {
+        height: 100%;
+        background: #080b12;
+        overflow: hidden;
+        /* niente rimbalzo elastico né trascinamento della pagina sotto il dito */
+        overscroll-behavior: none;
+      }
       body {
         display: flex;
         align-items: center;
         justify-content: center;
         font-family: "Segoe UI", system-ui, sans-serif;
         color: #dfe6f5;
+        /* Margini di sicurezza del telefono (foro fotocamera, angoli stondati,
+           barra gesti): li legge main.js per non finirci sotto con l'interfaccia. */
+        --sat: env(safe-area-inset-top, 0px);
+        --sar: env(safe-area-inset-right, 0px);
+        --sab: env(safe-area-inset-bottom, 0px);
+        --sal: env(safe-area-inset-left, 0px);
       }
-      #wrap { position: relative; width: 100vw; height: 100vh; }
-      canvas { display: block; width: 100%; height: 100%; }
+      /* dvh segue la barra del browser che compare e scompare su mobile */
+      #wrap { position: relative; width: 100vw; height: 100vh; height: 100dvh; }
+      canvas {
+        display: block;
+        width: 100%;
+        height: 100%;
+        /* il dito comanda il gioco, non fa scorrere o zoomare la pagina */
+        touch-action: none;
+        user-select: none;
+        -webkit-user-select: none;
+        -webkit-tap-highlight-color: transparent;
+      }
     </style>
   </head>
   <body>

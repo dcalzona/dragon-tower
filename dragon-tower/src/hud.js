@@ -10,10 +10,27 @@ export function bar(ctx, x, y, w, h, ratio, color) {
   ctx.fill();
 }
 
+const SAFE_ZERO = { top: 0, right: 0, bottom: 0, left: 0 };
+
+/**
+ * Restringe l'area utile ai margini di sicurezza del telefono (foro della
+ * fotocamera, angoli stondati, barra dei gesti). Spostando l'origine una volta
+ * sola, tutto il resto del disegno resta scritto come prima.
+ */
+function areaSicura(camera) {
+  const s = camera.safe || SAFE_ZERO;
+  return { off: s, view: { ...camera, w: camera.w - s.left - s.right, h: camera.h - s.top - s.bottom } };
+}
+
 export function drawHUD(ctx, game, camera, opts) {
   const { potionKey = 'Q', audioLabel = 'Musica + effetti', audioFull = true } = opts || {};
   const p = game.player;
+  const { off, view } = areaSicura(camera);
   const pad = 18;
+
+  // Spostamento unico: da qui in poi tutto il disegno è già dentro l'area sicura.
+  ctx.save();
+  ctx.translate(off.left, off.top);
 
   ctx.save();
   ctx.fillStyle = 'rgba(10, 14, 23, 0.82)';
@@ -90,14 +107,16 @@ export function drawHUD(ctx, game, camera, opts) {
   ctx.textAlign = 'right';
   ctx.font = '12px "Segoe UI", system-ui, sans-serif';
   ctx.fillStyle = game.difficulty.color;
-  ctx.fillText(game.difficulty.name.toUpperCase(), camera.w - pad, pad + 18);
+  ctx.fillText(game.difficulty.name.toUpperCase(), view.w - pad, pad + 18);
   ctx.fillStyle = audioFull ? PALETTE.textDim : '#7b6b48';
-  ctx.fillText(`♪ ${audioLabel}  [M]`, camera.w - pad, pad + 38);
+  ctx.fillText(`♪ ${audioLabel}  [M]`, view.w - pad, pad + 38);
   ctx.restore();
 
-  drawDragonGauge(ctx, game, camera, pad, opts);
-  drawBossBar(ctx, game, camera);
-  drawEventFeed(ctx, game, camera, pad);
+  drawDragonGauge(ctx, game, view, pad, opts);
+  drawBossBar(ctx, game, view);
+  drawEventFeed(ctx, game, view, pad);
+
+  ctx.restore();
 }
 
 /** Barra della metamorfosi: si carica coi frammenti, lampeggia quando è pronta. */
@@ -237,10 +256,12 @@ const NOTIF_GAP = 8;
  */
 export function drawNotifications(ctx, camera, notifications, pad = 18) {
   if (!notifications.length) return;
-  const x = camera.w - pad - NOTIF_W;
+  const { off, view } = areaSicura(camera);
+  const x = view.w - pad - NOTIF_W;
   const top = pad + 58; // sotto difficoltà e stato audio
 
   ctx.save();
+  ctx.translate(off.left, off.top);
   notifications.forEach((n, i) => {
     const age = 1 - n.life / n.maxLife;
     const slideIn = age < 0.14 ? 1 - age / 0.14 : 0;
