@@ -1,4 +1,4 @@
-import { PALETTE, SPEED_TIERS, DRAGON } from './config.js';
+import { PALETTE, SPEED_TIERS, DRAGON, ARENA_SPEED } from './config.js';
 import { roundRect } from './render.js';
 
 export function bar(ctx, x, y, w, h, ratio, color) {
@@ -82,6 +82,25 @@ export function drawHUD(ctx, game, camera, opts) {
   // Col touch il tasto è disegnato a schermo: suggerirne uno da tastiera confonde.
   ctx.fillText(potionKey ? `Pozioni: ${p.potions}  [${potionKey}]` : `Pozioni: ${p.potions}`, pad + 252, pad + 90);
 
+  // Nell'arena la percentuale di mappa non dice nulla: è tutta svelata.
+  if (game.arenaRoom) {
+    ctx.textAlign = 'left';
+    ctx.fillStyle = PALETTE.textDim;
+    ctx.font = '12px "Segoe UI", system-ui, sans-serif';
+    ctx.fillText('Arena del guardiano', pad + 16, pad + 112);
+    ctx.textAlign = 'right';
+    ctx.fillStyle = '#ff6b6b';
+    ctx.font = 'bold 12px "Segoe UI", system-ui, sans-serif';
+    ctx.fillText(`velocità ×${ARENA_SPEED}`, pad + 252, pad + 112);
+    ctx.restore();
+    drawZonaDestra(ctx, game, view, pad, audioLabel, audioFull);
+    drawDragonGauge(ctx, game, view, pad, opts);
+    drawBossBar(ctx, game, view);
+    drawEventFeed(ctx, game, view, pad);
+    ctx.restore();
+    return;
+  }
+
   // Esplorazione del piano + livello di velocità raggiunto
   const ratio = game.exploredRatio;
   const tier = game.speedTier > 0 ? SPEED_TIERS[game.speedTier - 1] : null;
@@ -118,7 +137,17 @@ export function drawHUD(ctx, game, camera, opts) {
   }
   ctx.restore();
 
-  // Difficoltà + stato audio
+  drawZonaDestra(ctx, game, view, pad, audioLabel, audioFull);
+
+  drawDragonGauge(ctx, game, view, pad, opts);
+  drawBossBar(ctx, game, view);
+  drawEventFeed(ctx, game, view, pad);
+
+  ctx.restore();
+}
+
+/** Difficoltà e stato audio, in alto a destra. */
+function drawZonaDestra(ctx, game, view, pad, audioLabel, audioFull) {
   ctx.save();
   ctx.textAlign = 'right';
   ctx.font = '12px "Segoe UI", system-ui, sans-serif';
@@ -126,12 +155,6 @@ export function drawHUD(ctx, game, camera, opts) {
   ctx.fillText(game.difficulty.name.toUpperCase(), view.w - pad, pad + 18);
   ctx.fillStyle = audioFull ? PALETTE.textDim : '#7b6b48';
   ctx.fillText(`♪ ${audioLabel}  [M]`, view.w - pad, pad + 38);
-  ctx.restore();
-
-  drawDragonGauge(ctx, game, view, pad, opts);
-  drawBossBar(ctx, game, view);
-  drawEventFeed(ctx, game, view, pad);
-
   ctx.restore();
 }
 
@@ -526,8 +549,8 @@ export function drawPauseScreen(ctx, camera, game, opts = {}) {
     ['Difesa', `${p.def}`],
     ['Pozioni', `${p.potions}`],
     ['Metamorfosi', p.dragonTimer > 0 ? `attiva · ${p.dragonTimer.toFixed(0)}s` : `${Math.round(p.dragonCharge * 100)}%`],
-    ['Mappa esplorata', `${Math.round(game.exploredRatio * 100)}%`],
-    ['Velocità', tier ? `${tier.name} ×${tier.mult}` : 'normale'],
+    ['Mappa esplorata', game.arenaRoom ? '—' : `${Math.round(game.exploredRatio * 100)}%`],
+    ['Velocità', game.arenaRoom ? `arena ×${ARENA_SPEED}` : tier ? `${tier.name} ×${tier.mult}` : 'normale'],
     ['Nemici abbattuti', `${s.uccisioni}`],
     ['Guardiani', `${s.bossAbbattuti} / 3`],
   ];

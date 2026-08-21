@@ -6,6 +6,7 @@ import {
   FOV_RADIUS,
   DIFFICULTIES,
   SPEED_TIERS,
+  ARENA_SPEED,
   DRAGON,
   bossForFloor,
   zoneForFloor,
@@ -231,11 +232,15 @@ export class Game {
   }
 
   get speedMultiplier() {
+    // Nell'arena l'esplorazione non c'entra nulla: aumento fisso e basta.
+    if (this.arenaRoom) return ARENA_SPEED;
     return this.speedTier > 0 ? SPEED_TIERS[this.speedTier - 1].mult : 1;
   }
 
   /** Promuove il giocatore al livello di velocità che l'esplorazione gli ha guadagnato. */
   checkSpeedTier() {
+    // Niente scaglioni nell'arena: scatterebbero tutti al primo frame.
+    if (this.arenaRoom) return;
     const ratio = this.exploredRatio;
     let tier = 0;
     SPEED_TIERS.forEach((t, i) => {

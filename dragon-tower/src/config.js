@@ -170,6 +170,13 @@ export function bossForFloor(depth) {
  * quello che resta è tornare indietro verso le scale — e camminare su terreno
  * noto dev'essere più rapido. Le soglie salgono con la mappa scoperta.
  */
+/**
+ * Nell'arena del guardiano la mappa è svelata fin dal primo istante, quindi il
+ * premio all'esplorazione regalerebbe subito la velocità massima — che è troppa.
+ * Al suo posto un aumento fisso: quel tanto che serve a schivare le cariche.
+ */
+export const ARENA_SPEED = 1.3;
+
 export const SPEED_TIERS = [
   { at: 0.8, mult: 1.35, name: 'ESPLORATORE', desc: 'Piano quasi tutto svelato · velocità +35%', color: '#63e6be' },
   { at: 0.95, mult: 1.7, name: 'CARTOGRAFO', desc: 'Conosci ogni angolo · velocità +70%', color: '#ffd43b' },
