@@ -147,8 +147,8 @@ window.addEventListener('pagehide', () => audio.suspend());
 
 function startGame() {
   input.mode = menu.useGamepad ? 'gamepad' : 'keyboard';
-  game = new Game(menu.difficulty, audio);
-  audio.setDepth(1, true);
+  // Il brano lo sceglie il gioco caricando il piano: sa se c'è un guardiano.
+  game = new Game(menu.difficulty, audio, menu.mode);
   appState = 'playing';
   gameOverAt = null;
   input.clearPressed();
@@ -157,7 +157,7 @@ function startGame() {
 function backToMenu() {
   appState = 'menu';
   menu.done = false;
-  menu.row = 3; // la riga "ENTRA NELLA TORRE"
+  menu.row = 4; // la riga "ENTRA NELLA TORRE"
   gameOverAt = null;
   input.clearPressed();
 }
@@ -213,7 +213,6 @@ function update(dt) {
     if (input.consume('restart') || input.consume('confirm') || input.consume('attack') || tap) {
       game.restart();
       gameOverAt = null;
-      audio.setDepth(1, true);
     } else if (input.consume('pause')) {
       backToMenu();
     }

@@ -124,17 +124,49 @@ const TRACKS = [
       [112, 'F#5', 2], [114, 'G5', 2], [116, 'B5', 2], [118, 'D#6', 2], [120, 'E6', 8],
     ],
   },
+  {
+    id: 'guardiano',
+    name: 'Il Guardiano',
+    floors: 'scontro col boss',
+    bpm: 176,
+    // Re minore armonica spinta verso il frigio, col Sol# che sta a tritono dal
+    // Re: e' l'intervallo che da secoli si usa per dire "qui c'e' qualcosa che
+    // non va". Basso martellante e cassa su ogni quarto, senza respiro.
+    roots: ['D', 'D', 'A#', 'A', 'D', 'D', 'A#', 'A'],
+    chords: {
+      D: ['D4', 'F4', 'A4'],
+      'A#': ['A#3', 'D4', 'F4'],
+      A: ['A3', 'C#4', 'E4'],
+    },
+    bassShape: [0, 0, 1, 0, 0, 0, 1, 0],
+    kick: [0, 4, 8, 12],
+    snare: [4, 12],
+    leadFilter: 3600,
+    melody: [
+      [0, 'D5', 2], [2, 'D5', 2], [4, 'D#5', 2], [6, 'D5', 2], [8, 'A4', 4], [12, 'D5', 4],
+      [16, 'F5', 2], [18, 'E5', 2], [20, 'D#5', 2], [22, 'D5', 2], [24, 'C#5', 4], [28, 'D5', 4],
+      [32, 'A#4', 2], [34, 'D5', 2], [36, 'F5', 2], [38, 'A5', 2], [40, 'G#5', 4], [44, 'F5', 4],
+      [48, 'A5', 2], [50, 'G#5', 2], [52, 'F5', 2], [54, 'E5', 2], [56, 'C#5', 8],
+      [64, 'D6', 2], [66, 'C#6', 2], [68, 'A#5', 2], [70, 'A5', 2], [72, 'F5', 4], [76, 'D5', 4],
+      [80, 'A5', 2], [82, 'A#5', 2], [84, 'A5', 2], [86, 'F5', 2], [88, 'D5', 4], [92, 'A4', 4],
+      [96, 'A#5', 2], [98, 'A5', 2], [100, 'F5', 2], [102, 'D5', 2], [104, 'A#4', 4], [108, 'F5', 4],
+      [112, 'E5', 2], [114, 'F5', 2], [116, 'G#5', 2], [118, 'A5', 2], [120, 'D6', 8],
+    ],
+  },
 ].map((t) => ({
   ...t,
   bass: buildBass(t.roots, t.bassShape),
   arpeggio: buildArpeggio(t.roots, t.chords),
 }));
 
+/** I primi tre brani seguono i piani; l'ultimo e' riservato agli scontri col boss. */
+const DEPTH_TRACKS = 3;
+export const BOSS_TRACK = 3;
 export const TRACK_COUNT = TRACKS.length;
 
 /** Un brano ogni dieci piani; oltre l'ultimo scaglione resta il terzo. */
 export function trackIndexForDepth(depth) {
-  return Math.max(0, Math.min(TRACKS.length - 1, Math.floor((depth - 1) / 10)));
+  return Math.max(0, Math.min(DEPTH_TRACKS - 1, Math.floor((depth - 1) / 10)));
 }
 
 const MUSIC_LEVEL = 0.34;
@@ -286,20 +318,37 @@ export class AudioEngine {
     this.trackIndex = next;
     if (!this.ctx) return changed ? this.track : null;
 
-    if (this.musicOn) {
-      const now = this.ctx.currentTime;
-      this._ramp(this.musicBus.gain, 0, now, 0.35);
-      clearTimeout(this._swapTimer);
-      this._swapTimer = setTimeout(() => {
-        if (!this.musicOn) return;
-        this.stopMusic();
-        this.step = 0;
-        this.startMusic();
-        this._ramp(this.musicBus.gain, MUSIC_LEVEL, this.ctx.currentTime, 0.5);
-      }, 400);
-    }
+    this._crossfade();
     // Solo un cambio vero merita l'annuncio a schermo; un riavvio forzato no.
     return changed ? this.track : null;
+  }
+
+  /**
+   * Entra o esce dal brano dello scontro. Il piano corrente resta memorizzato,
+   * cosi abbattuto il guardiano si torna alla musica della zona.
+   */
+  setBoss(attivo, depth) {
+    this.setIntensity(depth);
+    const voluto = attivo ? BOSS_TRACK : trackIndexForDepth(depth);
+    if (voluto === this.trackIndex) return null;
+    this.trackIndex = voluto;
+    this._crossfade();
+    return this.track;
+  }
+
+  /** Cambio di brano in dissolvenza: tagliare di netto si sentirebbe. */
+  _crossfade() {
+    if (!this.ctx || !this.musicOn) return;
+    const now = this.ctx.currentTime;
+    this._ramp(this.musicBus.gain, 0, now, 0.3);
+    clearTimeout(this._swapTimer);
+    this._swapTimer = setTimeout(() => {
+      if (!this.musicOn) return;
+      this.stopMusic();
+      this.step = 0;
+      this.startMusic();
+      this._ramp(this.musicBus.gain, MUSIC_LEVEL, this.ctx.currentTime, 0.45);
+    }, 340);
   }
 
   _scheduler() {

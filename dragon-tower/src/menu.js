@@ -1,7 +1,9 @@
 import { PALETTE, DIFFICULTIES } from './config.js';
+import { MODES } from './game.js';
 import { roundRect } from './render.js';
 
-const ROWS = ['controls', 'difficulty', 'audio', 'start'];
+const ROWS = ['controls', 'difficulty', 'mode', 'audio', 'start'];
+const MODE_LIST = [MODES.torre, MODES.boss];
 const AUDIO_MODES = ['full', 'sfx', 'off'];
 
 export class Menu {
@@ -11,12 +13,17 @@ export class Menu {
     this.row = 0;
     this.controlIndex = 0; // 0 = tastiera, 1 = controller
     this.difficultyIndex = 1;
+    this.modeIndex = 0;
     this.time = 0;
     this.done = false;
   }
 
   get difficulty() {
     return DIFFICULTIES[this.difficultyIndex];
+  }
+
+  get mode() {
+    return MODE_LIST[this.modeIndex];
   }
 
   get useGamepad() {
@@ -83,6 +90,7 @@ export class Menu {
     if (riga === 'controls') this.controlIndex = (this.controlIndex + dir + 2) % 2;
     else if (riga === 'difficulty')
       this.difficultyIndex = (this.difficultyIndex + dir + DIFFICULTIES.length) % DIFFICULTIES.length;
+    else if (riga === 'mode') this.modeIndex = (this.modeIndex + dir + MODE_LIST.length) % MODE_LIST.length;
     else if (riga === 'audio') {
       const i = AUDIO_MODES.indexOf(this.audio.mode);
       this.audio.setMode(AUDIO_MODES[(i + dir + AUDIO_MODES.length) % AUDIO_MODES.length]);
@@ -110,7 +118,13 @@ export class Menu {
     const cx = w / 2;
     const panelW = Math.min(560, w - 60);
     const panelX = cx - panelW / 2;
-    let y = Math.max(60, h * 0.16);
+
+    // Con cinque righe il menu sfora gli schermi bassi: se lo spazio non basta,
+    // gli spazi fra le righe si comprimono invece di far uscire il contenuto.
+    const ALTEZZA_NATURALE = 660;
+    const compressione = Math.min(1, (h - 40) / ALTEZZA_NATURALE);
+    const gap = (v) => v * compressione;
+    let y = Math.max(42, h * 0.16 * compressione + 34);
 
     // Titolo
     const glow = 0.5 + 0.5 * Math.sin(this.time * 2);
@@ -126,10 +140,10 @@ export class Menu {
     ctx.font = '14px "Segoe UI", system-ui, sans-serif';
     ctx.fillText('30 piani ti separano dal Cristallo', cx, y + 28);
 
-    y += 78;
+    y += gap(74);
 
     this._drawRow(ctx, panelX, y, panelW, 'COMANDI', this._controlLabel(), this.row === 0, PALETTE.player, 0);
-    y += 82;
+    y += gap(82);
 
     const diff = this.difficulty;
     this._drawRow(ctx, panelX, y, panelW, 'DIFFICOLTÀ', diff.name, this.row === 1, diff.color, 1);
@@ -137,18 +151,26 @@ export class Menu {
     ctx.fillStyle = PALETTE.textDim;
     ctx.font = '12.5px "Segoe UI", system-ui, sans-serif';
     ctx.fillText(diff.desc, cx, y + 62);
-    y += 92;
+    y += gap(92);
+
+    const md = this.mode;
+    this._drawRow(ctx, panelX, y, panelW, 'MODALITÀ', md.name, this.row === 2, md.id === 'boss' ? '#ff6b6b' : PALETTE.player, 2);
+    ctx.textAlign = 'center';
+    ctx.fillStyle = PALETTE.textDim;
+    ctx.font = '12.5px "Segoe UI", system-ui, sans-serif';
+    ctx.fillText(md.desc, cx, y + 62);
+    y += gap(92);
 
     const audioOn = this.audio.mode === 'full';
-    this._drawRow(ctx, panelX, y, panelW, 'AUDIO', this.audio.modeLabel, this.row === 2, audioOn ? PALETTE.player : '#8a94ad', 2);
-    y += 78;
+    this._drawRow(ctx, panelX, y, panelW, 'AUDIO', this.audio.modeLabel, this.row === 3, audioOn ? PALETTE.player : '#8a94ad', 3);
+    y += gap(78);
 
     // Pulsante avvio
-    const selected = this.row === 3;
+    const selected = this.row === 4;
     const btnW = 240;
     const btnH = 52;
     const btnX = cx - btnW / 2;
-    this.hitAreas.push({ kind: 'start', row: 3, x: btnX, y, w: btnW, h: btnH });
+    this.hitAreas.push({ kind: 'start', row: 4, x: btnX, y, w: btnW, h: btnH });
     ctx.fillStyle = selected ? 'rgba(78, 205, 196, 0.18)' : 'rgba(255,255,255,0.04)';
     roundRect(ctx, btnX, y, btnW, btnH, 12);
     ctx.fill();
@@ -160,7 +182,7 @@ export class Menu {
     ctx.textAlign = 'center';
     ctx.fillText('ENTRA NELLA TORRE', cx, y + 33);
 
-    y += btnH + 40;
+    y += btnH + gap(36);
 
     // Aiuto comandi
     ctx.fillStyle = PALETTE.textDim;

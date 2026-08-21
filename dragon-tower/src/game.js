@@ -44,10 +44,17 @@ function createStats() {
   };
 }
 
+export const MODES = {
+  torre: { id: 'torre', name: 'Torre completa', desc: 'I trenta piani, dal basso alla vetta.', floors: null },
+  // Modalita' di prova: solo i tre scontri, senza rifare dieci piani ogni volta.
+  boss: { id: 'boss', name: 'Solo guardiani', desc: 'I tre scontri di fila, per provarli.', floors: [10, 20, 30] },
+};
+
 export class Game {
-  constructor(difficulty = DIFFICULTIES[1], audio = null) {
+  constructor(difficulty = DIFFICULTIES[1], audio = null, mode = MODES.torre) {
     this.difficulty = difficulty;
     this.audio = audio;
+    this.mode = mode && mode.id ? mode : MODES.torre;
     this.depth = 1;
     this.player = null;
     this.particles = [];
@@ -58,7 +65,19 @@ export class Game {
     this.state = 'playing';
     this.time = 0;
     this.stats = createStats();
-    this.loadFloor(1, true);
+    this.loadFloor(this.primoPiano(), true);
+  }
+
+  /** Piano d'ingresso: la Torre parte dal basso, la prova dal primo guardiano. */
+  primoPiano() {
+    return this.mode.floors ? this.mode.floors[0] : 1;
+  }
+
+  /** Piano successivo: +1 nella Torre, salto al guardiano dopo nella prova. */
+  pianoSuccessivo() {
+    if (!this.mode.floors) return this.depth + 1;
+    const i = this.mode.floors.indexOf(this.depth);
+    return i >= 0 && i + 1 < this.mode.floors.length ? this.mode.floors[i + 1] : this.depth + 1;
   }
 
   loadFloor(depth, isFirst) {
@@ -106,9 +125,13 @@ export class Game {
     this.boss = null;
     this.spawnFloorContent();
 
-    // Ogni dieci piani la Torre mette un guardiano davanti alle scale.
+    // Nell'arena si vede tutto: lo scontro e' una scena, non un labirinto al
+    // buio, e le cariche del guardiano vanno viste per poterle schivare.
+    this.fullyLit = !!this.arenaRoom;
+
     const bossDef = bossForFloor(depth);
     if (bossDef) this.spawnBoss(bossDef);
+    if (this.audio) this.audio.setBoss(!!bossDef, depth);
 
     this.updateFOV();
     if (this.stats) this.stats.pianoMax = Math.max(this.stats.pianoMax, depth);
@@ -121,7 +144,7 @@ export class Game {
     // invece di chiuderlo. Il guardiano sta dal lato opposto all'ingresso.
     const room = this.arenaRoom || this.stairsRoom;
     const bx = room.cx + 0.5;
-    const by = room.y + 1.5;
+    const by = room.cy + 0.5;
     this.boss = createBoss(def, bx, by, this.difficulty);
     this.monsters.push(this.boss);
 
@@ -150,7 +173,10 @@ export class Game {
   apriSigilli() {
     if (!this.arenaDoors.length) return;
     this.arenaDoors.forEach((d) => {
-      if (this.tiles[d.y][d.x] === TILES.SEALED) this.tiles[d.y][d.x] = TILES.FLOOR;
+      if (this.tiles[d.y][d.x] !== TILES.SEALED) return;
+      // La scala deve tornare scala, non diventare pavimento.
+      const eraScala = this.stairs && d.x === this.stairs.x && d.y === this.stairs.y;
+      this.tiles[d.y][d.x] = eraScala ? TILES.STAIRS : TILES.FLOOR;
       this.burst(d.x + 0.5, d.y + 0.5, '#ffd43b', 10);
     });
     this.arenaDoors = [];
@@ -505,6 +531,7 @@ export class Game {
       this.boss = null;
       this.burst(m.x, m.y, m.def.color, 70);
       this.apriSigilli();
+      if (this.audio) this.audio.setBoss(false, this.depth);
       this.notify('SIGILLI SPEZZATI', `${m.def.name} è caduto · il piano si apre`, m.def.color, 5);
       this.addLog(`${m.def.name} crolla. I sigilli si spezzano.`, m.def.color);
       // Un boss vale una trasformazione intera.
@@ -743,26 +770,20 @@ export class Game {
   }
 
   ascend() {
+    const zonaPrima = zoneForFloor(this.depth);
     this.stats.esplorazioneMedia.push(this.exploredRatio);
     this.addLog(`Sali al piano successivo...`, '#ffd43b');
     this.burst(this.player.x, this.player.y, '#ffd43b', 24);
     this.sfx('stairs');
-    this.loadFloor(this.depth + 1, false);
-
-    // Nuova zona: cambiano musica e colori, e conviene dirlo.
-    const zonaPrima = zoneForFloor(this.depth - 1);
+    this.loadFloor(this.pianoSuccessivo(), false);
     const zonaOra = zoneForFloor(this.depth);
-    if (zonaOra !== zonaPrima) {
-      this.notify(zonaOra.name.toUpperCase(), 'La Torre cambia volto', zonaOra.accent, 4.5);
-      this.addLog(`Entri ne ${zonaOra.name}.`, zonaOra.accent);
-    }
 
-    if (this.audio) {
-      const nuovoBrano = this.audio.setDepth(this.depth);
-      if (nuovoBrano) {
-        this.notify(`♪ ${nuovoBrano.name.toUpperCase()}`, `Nuova colonna sonora · ${nuovoBrano.floors}`, '#c084fc', 4.2);
-        this.addLog(`La musica cambia: "${nuovoBrano.name}".`, '#c084fc');
-      }
+    // Il brano lo sceglie loadFloor, che sa se su questo piano c'e' un
+    // guardiano. Qui resta l'annuncio del cambio di zona, che coincide con
+    // quello della colonna sonora.
+    if (zonaOra !== zonaPrima) {
+      this.notify(zonaOra.name.toUpperCase(), 'Nuova zona, nuova musica', zonaOra.accent, 4.5);
+      this.addLog(`Entri ne ${zonaOra.name}.`, zonaOra.accent);
     }
     if (this.depth > 30) this.state = 'won';
   }
@@ -805,6 +826,18 @@ export class Game {
   }
 
   updateFOV() {
+    // Arena: tutto illuminato, una volta sola, senza raycast.
+    if (this.fullyLit) {
+      for (let y = 0; y < MAP_H; y++) {
+        for (let x = 0; x < MAP_W; x++) {
+          if (this.tiles[y][x] === TILES.VOID) continue;
+          this.visible[y][x] = true;
+          this.markExplored(x, y);
+        }
+      }
+      return;
+    }
+
     const p = this.player;
     const px = Math.floor(p.x);
     const py = Math.floor(p.y);
@@ -895,6 +928,6 @@ export class Game {
     this.state = 'playing';
     this.player = null;
     this.stats = createStats();
-    this.loadFloor(1, true);
+    this.loadFloor(this.primoPiano(), true);
   }
 }
