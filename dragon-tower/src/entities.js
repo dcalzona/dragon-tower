@@ -10,6 +10,9 @@ export const MONSTER_TYPES = [
 
 export const ITEM_TYPES = {
   potion: { name: 'Pozione', color: '#63e6be' },
+  // Il cuore cura subito invece di finire nello zaino: si raccoglie nel mezzo
+  // della mischia, quando fermarsi a bere non è un'opzione.
+  heart: { name: 'Cuore', color: '#ff6b6b' },
   crystal: { name: 'Frammento di Cristallo', color: '#ffd43b' },
   tome: { name: 'Tomo Antico', color: '#c084fc' },
 };

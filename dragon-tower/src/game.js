@@ -8,6 +8,8 @@ import {
   SPEED_TIERS,
   DRAGON,
   bossForFloor,
+  zoneForFloor,
+  evolutionForLevel,
 } from './config.js';
 import { generateDungeon, isBlocked } from './dungeon.js';
 import {
@@ -34,6 +36,7 @@ function createStats() {
     pozioniBevute: 0,
     frammenti: 0,
     tomi: 0,
+    cuori: 0,
     trasformazioni: 0,
     tempoInDrago: 0,
     livelloMax: 1,
@@ -65,6 +68,12 @@ export class Game {
     this.rooms = dungeon.rooms;
     this.stairs = dungeon.stairs;
     this.stairsRoom = dungeon.stairsRoom;
+    this.arenaRoom = dungeon.arenaRoom || null;
+    this.arenaDoors = dungeon.arenaDoors || [];
+    // Le uscite dell'arena restano chiuse finche' il guardiano e' vivo.
+    this.arenaDoors.forEach((d) => {
+      this.tiles[d.y][d.x] = TILES.SEALED;
+    });
 
     this.visible = Array.from({ length: MAP_H }, () => new Array(MAP_W).fill(false));
     this.explored = Array.from({ length: MAP_H }, () => new Array(MAP_W).fill(false));
@@ -74,7 +83,7 @@ export class Game {
     for (let y = 0; y < MAP_H; y++) {
       for (let x = 0; x < MAP_W; x++) {
         const t = this.tiles[y][x];
-        if (t === TILES.FLOOR || t === TILES.STAIRS) this.walkableTotal++;
+        if (t === TILES.FLOOR || t === TILES.STAIRS || t === TILES.SEALED) this.walkableTotal++;
       }
     }
     this.walkableExplored = 0;
@@ -108,15 +117,44 @@ export class Game {
   }
 
   spawnBoss(def) {
-    // Nell'arena delle scale, così lo si incontra per forza prima di scendere.
-    const room = this.stairsRoom;
+    // Si comincia dentro l'arena, faccia a faccia: lo scontro apre il piano
+    // invece di chiuderlo. Il guardiano sta dal lato opposto all'ingresso.
+    const room = this.arenaRoom || this.stairsRoom;
     const bx = room.cx + 0.5;
-    const by = room.cy + 0.5;
+    const by = room.y + 1.5;
     this.boss = createBoss(def, bx, by, this.difficulty);
     this.monsters.push(this.boss);
+
+    // Qualche sgherro nell'arena, ma lontano dal punto in cui arrivi.
+    const scorta = Math.max(2, Math.round(def.summons * this.difficulty.enemyCount));
+    for (let i = 0; i < scorta; i++) {
+      const a = (i / scorta) * Math.PI * 2;
+      const x = room.cx + 0.5 + Math.cos(a) * (room.w * 0.32);
+      const y = room.cy + 0.5 + Math.sin(a) * (room.h * 0.32);
+      if (isBlocked(this.tiles, x, y)) continue;
+      const type = pickMonsterType(this.depth);
+      const m = spawnMonster(type, x, y, this.depth);
+      m.maxHp = Math.max(1, Math.round(m.maxHp * this.difficulty.enemyHp));
+      m.hp = m.maxHp;
+      m.atk = Math.max(1, Math.round(m.atk * this.difficulty.enemyAtk));
+      m.speed *= this.difficulty.enemySpeed;
+      this.monsters.push(m);
+    }
+
     this.notify(def.name, def.subtitle, def.color, 5);
-    this.addLog(`${def.name} sbarra la strada!`, def.color);
+    this.addLog(`${def.name}! I sigilli si chiudono.`, def.color);
     this.sfx('boss');
+  }
+
+  /** Abbattuto il guardiano, i sigilli cadono e il piano si apre. */
+  apriSigilli() {
+    if (!this.arenaDoors.length) return;
+    this.arenaDoors.forEach((d) => {
+      if (this.tiles[d.y][d.x] === TILES.SEALED) this.tiles[d.y][d.x] = TILES.FLOOR;
+      this.burst(d.x + 0.5, d.y + 0.5, '#ffd43b', 10);
+    });
+    this.arenaDoors = [];
+    this.sfx('stairs');
   }
 
   spawnFloorContent() {
@@ -125,6 +163,7 @@ export class Game {
     for (let i = 0; i < monsterCount; i++) {
       const room = this.rooms[1 + Math.floor(Math.random() * (this.rooms.length - 1))];
       if (!room) continue;
+      if (this.arenaRoom && room === this.arenaRoom) continue; // l'arena ha i suoi
       const p = room.randomPoint();
       const type = pickMonsterType(this.depth);
       const m = spawnMonster(type, p.x + 0.5, p.y + 0.5, this.depth);
@@ -141,8 +180,10 @@ export class Game {
       const room = this.rooms[Math.floor(Math.random() * this.rooms.length)];
       if (!room) continue;
       const p = room.randomPoint();
+      // Meno pozioni da mettere via, piu' cuori da raccogliere al volo: la cura
+      // diventa una cosa che fai mentre combatti, non una scorta da amministrare.
       const roll = Math.random();
-      const kind = roll < 0.6 ? 'potion' : roll < 0.85 ? 'crystal' : 'tome';
+      const kind = roll < 0.3 ? 'potion' : roll < 0.62 ? 'heart' : roll < 0.85 ? 'crystal' : 'tome';
       this.items.push({ x: p.x + 0.5, y: p.y + 0.5, kind });
     }
   }
@@ -156,7 +197,7 @@ export class Game {
     if (this.explored[y][x]) return;
     this.explored[y][x] = true;
     const t = this.tiles[y][x];
-    if (t === TILES.FLOOR || t === TILES.STAIRS) this.walkableExplored++;
+    if (t === TILES.FLOOR || t === TILES.STAIRS || t === TILES.SEALED) this.walkableExplored++;
   }
 
   get exploredRatio() {
@@ -296,16 +337,7 @@ export class Game {
       Math.hypot(this.stairs.x + 0.5 - p.x, this.stairs.y + 0.5 - p.y) < 0.78;
 
     if (sulleScale) {
-      // Il guardiano sbarra le scale: niente scorciatoie.
-      if (this.boss && !this.boss.dead) {
-        if (this.time - (this.lastBlockedWarning || -9) > 3) {
-          this.lastBlockedWarning = this.time;
-          this.addLog('Le scale sono sigillate finché il guardiano vive.', this.boss.def.color);
-          this.notify('SCALE SIGILLATE', `Abbatti ${this.boss.def.name}`, this.boss.def.color, 2.6);
-        }
-      } else {
-        this.descend();
-      }
+      this.ascend();
     }
   }
 
@@ -337,6 +369,15 @@ export class Game {
     if (item.kind === 'potion') {
       p.potions += 1;
       this.addLog('Hai raccolto una pozione.', def.color);
+    } else if (item.kind === 'heart') {
+      const cura = Math.max(1, Math.round(p.maxHp * 0.22));
+      const prima = p.hp;
+      p.hp = Math.min(p.maxHp, p.hp + cura);
+      const effettiva = p.hp - prima;
+      this.stats.cuori++;
+      this.addFloatingText(p.x, p.y - 1, `+${effettiva}`, def.color);
+      this.addLog(`Cuore raccolto: +${effettiva} PV.`, def.color);
+      this.sfx('potion');
     } else if (item.kind === 'crystal') {
       p.crystals += 1;
       p.atk += 1;
@@ -463,8 +504,9 @@ export class Game {
       this.stats.bossAbbattuti++;
       this.boss = null;
       this.burst(m.x, m.y, m.def.color, 70);
-      this.notify('GUARDIANO ABBATTUTO', `${m.def.name} · scale libere`, m.def.color, 5);
-      this.addLog(`${m.def.name} crolla. Le scale si aprono.`, m.def.color);
+      this.apriSigilli();
+      this.notify('SIGILLI SPEZZATI', `${m.def.name} è caduto · il piano si apre`, m.def.color, 5);
+      this.addLog(`${m.def.name} crolla. I sigilli si spezzano.`, m.def.color);
       // Un boss vale una trasformazione intera.
       p.dragonCharge = Math.min(1, p.dragonCharge + DRAGON.chargePerBoss);
       this.notify('CRISTALLO CARICO', 'Trasformazione pronta', DRAGON.color, 4);
@@ -488,6 +530,13 @@ export class Game {
       this.addLog(`Livello ${p.level}! Ti senti più forte.`, '#ffd43b');
       this.notify(`LIVELLO ${p.level}`, 'PV +10 · ATT +2 · DIF +1', '#ffd43b');
       this.stats.livelloMax = p.level;
+      const evoPrima = evolutionForLevel(p.level - 1);
+      const evoOra = evolutionForLevel(p.level);
+      if (evoOra !== evoPrima) {
+        this.notify('NUOVA FORMA', evoOra.name, DRAGON.color, 4.5);
+        this.addLog(`La tua forma muta: ${evoOra.name}.`, DRAGON.color);
+        this.burst(p.x, p.y, DRAGON.color, 30);
+      }
       this.sfx('levelup');
     }
   }
@@ -693,14 +742,21 @@ export class Game {
     }
   }
 
-  descend() {
+  ascend() {
     this.stats.esplorazioneMedia.push(this.exploredRatio);
-    this.addLog(`Scendi più in profondità...`, '#ffd43b');
+    this.addLog(`Sali al piano successivo...`, '#ffd43b');
     this.burst(this.player.x, this.player.y, '#ffd43b', 24);
     this.sfx('stairs');
     this.loadFloor(this.depth + 1, false);
 
-    // Ogni dieci piani la Torre cambia colonna sonora: vale la pena dirlo.
+    // Nuova zona: cambiano musica e colori, e conviene dirlo.
+    const zonaPrima = zoneForFloor(this.depth - 1);
+    const zonaOra = zoneForFloor(this.depth);
+    if (zonaOra !== zonaPrima) {
+      this.notify(zonaOra.name.toUpperCase(), 'La Torre cambia volto', zonaOra.accent, 4.5);
+      this.addLog(`Entri ne ${zonaOra.name}.`, zonaOra.accent);
+    }
+
     if (this.audio) {
       const nuovoBrano = this.audio.setDepth(this.depth);
       if (nuovoBrano) {
@@ -783,7 +839,8 @@ export class Game {
         if (tx < 0 || ty < 0 || tx >= MAP_W || ty >= MAP_H) break;
         this.visible[ty][tx] = true;
         this.markExplored(tx, ty);
-        if (this.tiles[ty][tx] === TILES.WALL || this.tiles[ty][tx] === TILES.VOID) break;
+        const tt = this.tiles[ty][tx];
+        if (tt === TILES.WALL || tt === TILES.VOID || tt === TILES.SEALED) break;
       }
     }
 
@@ -803,7 +860,7 @@ export class Game {
     for (let y = y0; y <= y1; y++) {
       for (let x = x0; x <= x1; x++) {
         if (this.visible[y][x]) continue;
-        if (this.tiles[y][x] !== TILES.WALL) continue;
+        if (this.tiles[y][x] !== TILES.WALL && this.tiles[y][x] !== TILES.SEALED) continue;
         if (Math.hypot(x + 0.5 - this.player.x, y + 0.5 - this.player.y) > FOV_RADIUS + 1) continue;
 
         scan: for (let dy = -1; dy <= 1; dy++) {

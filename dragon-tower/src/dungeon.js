@@ -182,15 +182,36 @@ function buildDungeon(depth, serveArena) {
   // Con un boss le scale vanno nella stanza più grande, che diventa l'arena;
   // sugli altri piani resta l'ultima stanza generata, per varietà.
   let stairsRoom = rooms[rooms.length - 1];
+  let arenaRoom = null;
+  const arenaDoors = [];
   if (serveArena) {
     // Fra le stanze che rispettano le misure minime prendo la più ampia; se
     // nessuna le rispetta ripiego sulla più grande e segnalo il tentativo fallito.
     const bigger = (a, b) => (b.w * b.h > a.w * a.h ? b : a);
     const adatte = candidate.filter((r) => r.w >= ARENA_MIN_W && r.h >= ARENA_MIN_H);
-    stairsRoom = adatte.length ? adatte.reduce(bigger) : candidate.reduce(bigger, candidate[0]);
+    arenaRoom = adatte.length ? adatte.reduce(bigger) : candidate.reduce(bigger, candidate[0]);
+
+    // Le scale vanno il piu' lontano possibile dall'arena: abbattuto il
+    // guardiano, il piano si apre e resta qualcosa da esplorare.
+    const distanza = (r) => Math.hypot(r.cx - arenaRoom.cx, r.cy - arenaRoom.cy);
+    const altre = rooms.filter((r) => r !== arenaRoom);
+    stairsRoom = altre.length ? altre.reduce((a, b) => (distanza(b) > distanza(a) ? b : a)) : arenaRoom;
+
+    // Ogni varco che entra nell'arena viene sigillato.
+    for (let y = arenaRoom.y - 1; y <= arenaRoom.y + arenaRoom.h; y++) {
+      for (let x = arenaRoom.x - 1; x <= arenaRoom.x + arenaRoom.w; x++) {
+        if (x < 1 || y < 1 || x >= MAP_W - 1 || y >= MAP_H - 1) continue;
+        const dentro =
+          x >= arenaRoom.x && x < arenaRoom.x + arenaRoom.w && y >= arenaRoom.y && y < arenaRoom.y + arenaRoom.h;
+        if (dentro) continue;
+        if (tiles[y][x] === TILES.FLOOR) arenaDoors.push({ x, y });
+      }
+    }
   }
 
-  const arenaOk = !serveArena || (stairsRoom.w >= ARENA_MIN_W && stairsRoom.h >= ARENA_MIN_H);
+  const arenaOk =
+    !serveArena ||
+    (arenaRoom.w >= ARENA_MIN_W && arenaRoom.h >= ARENA_MIN_H && arenaDoors.length > 0 && stairsRoom !== arenaRoom);
 
   // Le scale sono un'arcata scavata nel muro, non una botola in mezzo alla stanza.
   const stairs = placeStairsInWall(tiles, stairsRoom) || {
@@ -205,8 +226,14 @@ function buildDungeon(depth, serveArena) {
     rooms,
     stairs,
     stairsRoom,
+    arenaRoom,
+    arenaDoors,
     arenaOk,
-    start: { x: startRoom.cx + 0.5, y: startRoom.cy + 0.5 },
+    // Sui piani con un guardiano si comincia dentro l'arena: lo scontro e' la
+    // porta d'ingresso al piano, non il suo epilogo.
+    start: serveArena
+      ? { x: arenaRoom.cx + 0.5, y: arenaRoom.cy + 0.5 }
+      : { x: startRoom.cx + 0.5, y: startRoom.cy + 0.5 },
   };
 }
 
@@ -215,5 +242,6 @@ export function isBlocked(tiles, x, y) {
   const ty = Math.floor(y);
   if (tx < 0 || ty < 0 || tx >= MAP_W || ty >= MAP_H) return true;
   const t = tiles[ty][tx];
-  return t === TILES.VOID || t === TILES.WALL;
+  // Il sigillo dell'arena blocca come un muro finche' il guardiano non cade.
+  return t === TILES.VOID || t === TILES.WALL || t === TILES.SEALED;
 }

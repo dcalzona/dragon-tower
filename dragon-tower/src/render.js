@@ -1,4 +1,4 @@
-import { TILE, MAP_W, MAP_H, TILES, PALETTE, DRAGON } from './config.js';
+import { TILE, MAP_W, MAP_H, TILES, PALETTE, DRAGON, zoneForFloor, evolutionForLevel } from './config.js';
 import { ITEM_TYPES } from './entities.js';
 
 /** Rumore deterministico per tile: varia il pavimento senza farlo sfarfallare. */
@@ -9,6 +9,9 @@ function tileHash(x, y) {
 
 export function drawWorld(ctx, game, camera, time) {
   const { tiles, visible, explored } = game;
+  // Ogni zona della Torre ha la sua tinta: salendo si passa dal grigio-acciaio
+  // delle fondamenta al rosso brace della vetta.
+  const tinta = zoneForFloor(game.depth).tint;
 
   const x0 = Math.max(0, Math.floor(camera.x / TILE) - 1);
   const y0 = Math.max(0, Math.floor(camera.y / TILE) - 1);
@@ -29,25 +32,38 @@ export function drawWorld(ctx, game, camera, time) {
       const py = y * TILE;
       const h = tileHash(x, y);
 
-      if (t === TILES.WALL) {
-        drawWallTile(ctx, px, py, lit, h, flicker);
+      if (t === TILES.SEALED) {
+        drawSeal(ctx, px, py, lit, time);
+      } else if (t === TILES.WALL) {
+        drawWallTile(ctx, px, py, lit, h, flicker, tinta);
       } else {
         if (t === TILES.STAIRS) drawStairs(ctx, px, py, lit, time, game.stairs && game.stairs.dir);
-        else drawFloorTile(ctx, px, py, lit, h, flicker);
+        else drawFloorTile(ctx, px, py, lit, h, flicker, tinta);
       }
 
       if (!lit) {
-        ctx.fillStyle = 'rgba(8, 11, 18, 0.58)';
+        // Velo piu' leggero di prima: al buio del telefono le zone gia' viste
+        // sparivano nel fondo e non si capiva piu' dove si era stati.
+        ctx.fillStyle = 'rgba(8, 11, 18, 0.34)';
         ctx.fillRect(px, py, TILE, TILE);
+
+        // Contorno freddo: e' il segno che distingue "gia' esplorato" dal nero
+        // del non ancora visto, e regge anche con lo schermo poco luminoso.
+        if (t !== TILES.WALL) {
+          ctx.strokeStyle = 'rgba(140, 170, 230, 0.16)';
+          ctx.lineWidth = 1;
+          roundRect(ctx, px + 2, py + 2, TILE - 4, TILE - 4, 4);
+          ctx.stroke();
+        }
       }
     }
   }
 }
 
-function drawFloorTile(ctx, px, py, lit, h, flicker) {
-  const base = lit ? 26 + h * 12 : 18 + h * 6;
+function drawFloorTile(ctx, px, py, lit, h, flicker, tinta) {
+  const base = lit ? 26 + h * 12 : 26 + h * 8;
   const v = Math.round(base * (lit ? flicker : 1));
-  ctx.fillStyle = `rgb(${Math.round(v * 0.72)}, ${Math.round(v * 0.9)}, ${Math.round(v * 1.55)})`;
+  ctx.fillStyle = `rgb(${Math.round(v * tinta[0])}, ${Math.round(v * tinta[1])}, ${Math.round(v * tinta[2])})`;
   roundRect(ctx, px + 1.5, py + 1.5, TILE - 3, TILE - 3, 4);
   ctx.fill();
 
@@ -58,9 +74,9 @@ function drawFloorTile(ctx, px, py, lit, h, flicker) {
   }
 }
 
-function drawWallTile(ctx, px, py, lit, h, flicker) {
-  const v = Math.round((lit ? 52 + h * 14 : 34 + h * 8) * (lit ? flicker : 1));
-  ctx.fillStyle = `rgb(${Math.round(v * 0.72)}, ${Math.round(v * 0.86)}, ${Math.round(v * 1.35)})`;
+function drawWallTile(ctx, px, py, lit, h, flicker, tinta) {
+  const v = Math.round((lit ? 52 + h * 14 : 44 + h * 10) * (lit ? flicker : 1));
+  ctx.fillStyle = `rgb(${Math.round(v * tinta[0] * 0.98)}, ${Math.round(v * tinta[1] * 0.96)}, ${Math.round(v * tinta[2] * 0.9)})`;
   roundRect(ctx, px + 1, py + 1, TILE - 2, TILE - 2, 5);
   ctx.fill();
 
@@ -99,31 +115,70 @@ function drawStairs(ctx, px, py, lit, time, dir) {
   const w = TILE * 0.6;
   const hh = TILE * 0.8;
 
-  // apertura buia ad arco
+  // Apertura schiarita verso l'alto: la luce viene da sopra, perché la Torre
+  // si sale. Un vano nero faceva sembrare che si scendesse sottoterra.
   ctx.beginPath();
   ctx.moveTo(-w / 2, hh / 2);
   ctx.lineTo(-w / 2, -hh / 2 + w / 2);
   ctx.arc(0, -hh / 2 + w / 2, w / 2, Math.PI, 0);
   ctx.lineTo(w / 2, hh / 2);
   ctx.closePath();
-  ctx.fillStyle = '#05070c';
+  const sfumatura = ctx.createLinearGradient(0, hh / 2, 0, -hh / 2);
+  sfumatura.addColorStop(0, '#0a0d16');
+  sfumatura.addColorStop(0.55, lit ? '#3b3524' : '#1c2136');
+  sfumatura.addColorStop(1, lit ? '#8d7a3c' : '#39331d');
+  ctx.fillStyle = sfumatura;
   ctx.fill();
 
-  // gradini che rimpiccioliscono salendo: danno profondità al varco
+  // Gradini che salgono allontanandosi: il più basso è il più vicino e largo.
   ctx.fillStyle = PALETTE.stairs;
   for (let i = 0; i < 4; i++) {
-    ctx.globalAlpha = (lit ? 0.9 : 0.4) * (1 - i * 0.21);
+    ctx.globalAlpha = (lit ? 0.55 : 0.26) + i * (lit ? 0.12 : 0.05);
     const larghezza = w * (0.92 - i * 0.16);
     const y = hh / 2 - 4 - i * (TILE * 0.13);
     ctx.fillRect(-larghezza / 2, y, larghezza, 2.6);
   }
 
-  // bagliore sulla soglia
-  ctx.globalAlpha = (lit ? 0.55 : 0.22) * pulse;
-  ctx.shadowColor = PALETTE.stairs;
-  ctx.shadowBlur = 14;
-  ctx.fillStyle = PALETTE.stairs;
-  ctx.fillRect(-w / 2, hh / 2 - 2.5, w, 2.5);
+  // Freccia verso l'alto: toglie ogni dubbio sulla direzione.
+  ctx.globalAlpha = (lit ? 0.85 : 0.35) * (0.6 + 0.4 * pulse);
+  ctx.strokeStyle = PALETTE.stairs;
+  ctx.lineWidth = 2.2;
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  ctx.beginPath();
+  ctx.moveTo(-w * 0.2, -hh * 0.16);
+  ctx.lineTo(0, -hh * 0.34);
+  ctx.lineTo(w * 0.2, -hh * 0.16);
+  ctx.stroke();
+  ctx.restore();
+}
+
+/** Sigillo dell'arena: una barriera di rune che cade quando il guardiano muore. */
+function drawSeal(ctx, px, py, lit, time) {
+  const pulse = 0.55 + 0.45 * Math.sin(time * 2.6 + px * 0.05);
+  ctx.save();
+  ctx.globalAlpha = lit ? 1 : 0.45;
+
+  ctx.fillStyle = '#1a1430';
+  roundRect(ctx, px + 1, py + 1, TILE - 2, TILE - 2, 5);
+  ctx.fill();
+
+  ctx.globalAlpha *= 0.35 + pulse * 0.4;
+  ctx.fillStyle = '#c084fc';
+  roundRect(ctx, px + 3, py + 3, TILE - 6, TILE - 6, 4);
+  ctx.fill();
+
+  // sbarre verticali di energia
+  ctx.globalAlpha = (lit ? 0.85 : 0.4) * pulse;
+  ctx.strokeStyle = '#e9d5ff';
+  ctx.lineWidth = 2;
+  for (let i = 1; i <= 3; i++) {
+    const x = px + (TILE * i) / 4;
+    ctx.beginPath();
+    ctx.moveTo(x, py + 5);
+    ctx.lineTo(x, py + TILE - 5);
+    ctx.stroke();
+  }
   ctx.restore();
 }
 
@@ -203,6 +258,24 @@ export function drawItems(ctx, items, game, time) {
       ctx.lineTo(px, py + 10);
       ctx.closePath();
       ctx.fill();
+    } else if (item.kind === 'heart') {
+      // cuore: due lobi e una punta, cura al volo
+      const s2 = 1 + Math.sin(time * 5 + item.x) * 0.06;
+      ctx.save();
+      ctx.translate(px, py);
+      ctx.scale(s2, s2);
+      ctx.beginPath();
+      ctx.moveTo(0, 7);
+      ctx.bezierCurveTo(-11, -1, -7, -10, 0, -4.5);
+      ctx.bezierCurveTo(7, -10, 11, -1, 0, 7);
+      ctx.closePath();
+      ctx.fill();
+      ctx.globalAlpha *= 0.45;
+      ctx.fillStyle = '#ffffff';
+      ctx.beginPath();
+      ctx.ellipse(-3.4, -3, 2.2, 1.5, -0.5, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
     } else {
       roundRect(ctx, px - 8, py - 6, 16, 12, 2);
       ctx.fill();
@@ -547,32 +620,98 @@ export function drawPlayer(ctx, p, time, isDragon) {
   ctx.globalAlpha = flashing ? 0.4 : 1;
 
   if (isDragon) drawDragonForm(ctx, p, px, py, r, time);
-  else drawHumanForm(ctx, p, px, py, r);
+  else drawHumanForm(ctx, p, px, py, r, time);
 
   ctx.restore();
 }
 
-function drawHumanForm(ctx, p, px, py, r) {
+/**
+ * La forma cresce coi livelli: corna che spuntano, mantello, poi ali. È il filo
+ * dell'originale — l'eroe che sta diventando qualcos'altro — mostrato invece che
+ * raccontato, così il progresso si vede sul personaggio e non solo nei numeri.
+ */
+function drawHumanForm(ctx, p, px, py, r, time) {
+  const evo = evolutionForLevel(p.level || 1);
+  const raggio = r * evo.scale;
+
+  // Ali accennate dietro le spalle, agli stadi avanzati
+  if (evo.wings > 0) {
+    const apertura = 0.55 + evo.wings * 0.3;
+    const battito = Math.sin((time || 0) * 2.4) * 0.12;
+    ctx.save();
+    ctx.globalAlpha *= 0.55 + evo.wings * 0.12;
+    ctx.fillStyle = PALETTE.playerDark;
+    ctx.beginPath();
+    ctx.moveTo(px, py);
+    ctx.quadraticCurveTo(px - raggio * 1.5, py - raggio * (apertura + battito), px - raggio * 1.75, py + raggio * 0.3);
+    ctx.quadraticCurveTo(px - raggio * 0.9, py + raggio * 0.05, px, py + raggio * 0.4);
+    ctx.moveTo(px, py);
+    ctx.quadraticCurveTo(px + raggio * 1.5, py - raggio * (apertura + battito), px + raggio * 1.75, py + raggio * 0.3);
+    ctx.quadraticCurveTo(px + raggio * 0.9, py + raggio * 0.05, px, py + raggio * 0.4);
+    ctx.fill();
+    ctx.restore();
+  }
+
   ctx.shadowColor = PALETTE.player;
-  ctx.shadowBlur = 16;
+  ctx.shadowBlur = 16 + evo.wings * 8;
   ctx.fillStyle = PALETTE.player;
   ctx.beginPath();
-  ctx.arc(px, py, r, 0, Math.PI * 2);
+  ctx.arc(px, py, raggio, 0, Math.PI * 2);
   ctx.fill();
   ctx.shadowBlur = 0;
 
-  // mantello dal lato opposto allo sguardo
-  ctx.fillStyle = PALETTE.playerDark;
-  ctx.beginPath();
-  ctx.ellipse(px - p.facing.x * r * 0.5, py - p.facing.y * r * 0.5, r * 0.78, r * 0.62, 0, 0, Math.PI * 2);
-  ctx.fill();
+  if (evo.cape) {
+    // mantello dal lato opposto allo sguardo
+    ctx.fillStyle = PALETTE.playerDark;
+    ctx.beginPath();
+    ctx.ellipse(
+      px - p.facing.x * raggio * 0.5,
+      py - p.facing.y * raggio * 0.5,
+      raggio * 0.82,
+      raggio * 0.66,
+      0,
+      0,
+      Math.PI * 2
+    );
+    ctx.fill();
+  }
 
   ctx.fillStyle = PALETTE.player;
   ctx.beginPath();
-  ctx.arc(px, py, r * 0.82, 0, Math.PI * 2);
+  ctx.arc(px, py, raggio * 0.82, 0, Math.PI * 2);
   ctx.fill();
 
-  eyes(ctx, px + p.facing.x * r * 0.2, py + p.facing.y * r * 0.2, r * 0.3, r * 0.19, p.facing.x, p.facing.y);
+  // Corna: una sola al centro, poi il paio, poi la cresta di tre
+  if (evo.horns > 0) {
+    ctx.fillStyle = '#dff7f4';
+    const corno = (dx, altezza) => {
+      ctx.beginPath();
+      ctx.moveTo(px + dx - raggio * 0.13, py - raggio * 0.62);
+      ctx.lineTo(px + dx, py - raggio * (0.62 + altezza));
+      ctx.lineTo(px + dx + raggio * 0.13, py - raggio * 0.62);
+      ctx.closePath();
+      ctx.fill();
+    };
+    if (evo.horns === 1) corno(0, 0.42);
+    else if (evo.horns === 2) {
+      corno(-raggio * 0.34, 0.46);
+      corno(raggio * 0.34, 0.46);
+    } else {
+      corno(-raggio * 0.46, 0.4);
+      corno(0, 0.56);
+      corno(raggio * 0.46, 0.4);
+    }
+  }
+
+  eyes(
+    ctx,
+    px + p.facing.x * raggio * 0.2,
+    py + p.facing.y * raggio * 0.2,
+    raggio * 0.3,
+    raggio * 0.19,
+    p.facing.x,
+    p.facing.y
+  );
 }
 
 /** Forma di drago: ali battenti, corna, coda che segue la direzione. */

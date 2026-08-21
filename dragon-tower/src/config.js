@@ -8,6 +8,8 @@ export const TILES = {
   FLOOR: 1,
   WALL: 2,
   STAIRS: 3,
+  // Sigillo: chiude le uscite dell'arena finche' il guardiano e' vivo.
+  SEALED: 4,
 };
 
 export const PALETTE = {
@@ -26,6 +28,62 @@ export const PALETTE = {
   text: '#dfe6f5',
   textDim: '#7b87a8',
 };
+
+/**
+ * Le tre zone della Torre, una ogni dieci piani, in tinta con le colonne sonore.
+ * Salendo si passa dalla pietra fredda delle fondamenta al rosso della vetta:
+ * trenta piani tutti dello stesso grigio erano una traversata monotona.
+ *
+ * `hue` sposta la tinta, `sat` quanto è colorata, `warm` quanto tende al caldo.
+ */
+export const ZONES = [
+  {
+    id: 'fondamenta',
+    name: 'Le Fondamenta',
+    floors: [1, 10],
+    tint: [0.72, 0.88, 1.42], // blu-acciaio: il grigio di partenza
+    accent: '#8fb8ff',
+  },
+  {
+    id: 'cripte',
+    name: 'Le Cripte',
+    floors: [11, 20],
+    tint: [1.02, 0.78, 1.18], // viola sepolcrale
+    accent: '#c084fc',
+  },
+  {
+    id: 'vetta',
+    name: 'La Vetta',
+    floors: [21, 30],
+    tint: [1.38, 0.82, 0.78], // rosso brace: si avvicina il Cristallo
+    accent: '#ff8f6b',
+  },
+];
+
+export function zoneForFloor(depth) {
+  return ZONES[Math.max(0, Math.min(ZONES.length - 1, Math.floor((depth - 1) / 10)))];
+}
+
+/**
+ * Il personaggio cambia forma man mano che sale di livello: da sagoma nuda a
+ * creatura sempre più draconica. È il filo dell'originale — l'eroe intrappolato
+ * in un corpo che non è il suo — reso visibile invece che raccontato.
+ */
+export const EVOLUTION = [
+  { from: 1, name: 'Viandante', horns: 0, cape: false, wings: 0, scale: 1.0 },
+  { from: 4, name: 'Cercatore', horns: 1, cape: true, wings: 0, scale: 1.04 },
+  { from: 8, name: 'Portatore di Scaglie', horns: 2, cape: true, wings: 0, scale: 1.08 },
+  { from: 12, name: 'Sangue di Drago', horns: 2, cape: true, wings: 1, scale: 1.12 },
+  { from: 16, name: 'Erede del Cristallo', horns: 3, cape: true, wings: 2, scale: 1.16 },
+];
+
+export function evolutionForLevel(level) {
+  let stadio = EVOLUTION[0];
+  EVOLUTION.forEach((e) => {
+    if (level >= e.from) stadio = e;
+  });
+  return stadio;
+}
 
 export const PLAYER = {
   speed: 5.2,
