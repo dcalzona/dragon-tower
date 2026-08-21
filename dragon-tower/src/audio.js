@@ -1,6 +1,10 @@
 // Motore audio: colonne sonore gotiche in stile Castlevania, generate nota per nota,
 // più gli effetti sonori. Nessun file audio esterno: tutto sintetizzato con la Web Audio API.
 
+import { TRACKS, TOTAL_STEPS, BOSS_TRACK, TRACK_COUNT, trackIndexForDepth } from './musica.js';
+
+export { BOSS_TRACK, TRACK_COUNT, trackIndexForDepth };
+
 const SEMITONES = { C: 0, 'C#': 1, D: 2, 'D#': 3, E: 4, F: 5, 'F#': 6, G: 7, 'G#': 8, A: 9, 'A#': 10, B: 11 };
 
 function freq(name) {
@@ -8,165 +12,6 @@ function freq(name) {
   if (!m) return 440;
   const midi = SEMITONES[m[1]] + (parseInt(m[2], 10) + 1) * 12;
   return 440 * Math.pow(2, (midi - 69) / 12);
-}
-
-const STEPS_PER_BAR = 16;
-const BARS = 8;
-const TOTAL_STEPS = STEPS_PER_BAR * BARS;
-
-// Basso "a galoppo": il motore ritmico. 1 = salto d'ottava sopra.
-function buildBass(roots, shape) {
-  const out = [];
-  roots.forEach((root, bar) => {
-    shape.forEach((oct, i) => {
-      out.push([bar * STEPS_PER_BAR + i * 2, `${root}${oct ? 3 : 2}`, 2]);
-    });
-  });
-  return out;
-}
-
-// Arpeggio d'accompagnamento, tipo clavicembalo, sotto la melodia.
-function buildArpeggio(roots, chords) {
-  const out = [];
-  roots.forEach((root, bar) => {
-    const chord = chords[root];
-    for (let i = 0; i < 8; i++) {
-      out.push([bar * STEPS_PER_BAR + i * 2 + 1, chord[i % chord.length], 2]);
-    }
-  });
-  return out;
-}
-
-/**
- * Tre colonne sonore, una ogni dieci piani: la Torre cambia carattere man mano
- * che si scende. Tutte in minore armonica — è la scala che dà il colore gotico —
- * ma in tonalità, tempi e cadenze diverse, così si riconoscono subito.
- */
-const TRACKS = [
-  {
-    id: 'soglia',
-    name: 'La Soglia',
-    floors: 'piani 1-10',
-    bpm: 152,
-    // La minore armonica su cadenza andalusa discendente Am · G · F · E.
-    roots: ['A', 'G', 'F', 'E', 'A', 'G', 'F', 'E'],
-    chords: { A: ['A4', 'C5', 'E5'], G: ['G4', 'B4', 'D5'], F: ['F4', 'A4', 'C5'], E: ['E4', 'G#4', 'B4'] },
-    bassShape: [0, 0, 1, 0, 0, 0, 1, 0],
-    kick: [0, 7, 8],
-    snare: [4, 12],
-    leadFilter: 2900,
-    melody: [
-      [0, 'E5', 4], [4, 'A5', 2], [6, 'G#5', 2], [8, 'A5', 4], [12, 'E5', 2], [14, 'C5', 2],
-      [16, 'D5', 4], [20, 'G5', 2], [22, 'F#5', 2], [24, 'G5', 4], [28, 'D5', 2], [30, 'B4', 2],
-      [32, 'C5', 4], [36, 'F5', 2], [38, 'E5', 2], [40, 'F5', 4], [44, 'C5', 2], [46, 'A4', 2],
-      [48, 'B4', 4], [52, 'E5', 2], [54, 'D#5', 2], [56, 'E5', 8],
-      [64, 'A5', 2], [66, 'B5', 2], [68, 'C6', 2], [70, 'B5', 2], [72, 'A5', 4], [76, 'G#5', 4],
-      [80, 'G5', 2], [82, 'A5', 2], [84, 'B5', 2], [86, 'A5', 2], [88, 'G5', 4], [92, 'F#5', 4],
-      [96, 'F5', 2], [98, 'G5', 2], [100, 'A5', 2], [102, 'G5', 2], [104, 'F5', 4], [108, 'E5', 4],
-      [112, 'E5', 2], [114, 'F5', 2], [116, 'G#5', 2], [118, 'B5', 2], [120, 'E5', 8],
-    ],
-  },
-  {
-    id: 'cripte',
-    name: 'Le Cripte',
-    floors: 'piani 11-20',
-    bpm: 168,
-    // Re minore armonica, cadenza i · VI · iv · V. Più veloce e incalzante:
-    // il basso batte tutti gli ottavi senza respiro.
-    roots: ['D', 'A#', 'G', 'A', 'D', 'A#', 'G', 'A'],
-    chords: {
-      D: ['D4', 'F4', 'A4'],
-      'A#': ['A#3', 'D4', 'F4'],
-      G: ['G3', 'A#3', 'D4'],
-      A: ['A3', 'C#4', 'E4'],
-    },
-    bassShape: [0, 1, 0, 1, 0, 1, 0, 1],
-    kick: [0, 3, 8, 11],
-    snare: [4, 12],
-    leadFilter: 3300,
-    melody: [
-      [0, 'D5', 2], [2, 'A5', 2], [4, 'F5', 2], [6, 'D5', 2], [8, 'C#5', 4], [12, 'D5', 4],
-      [16, 'A#4', 2], [18, 'F5', 2], [20, 'D5', 2], [22, 'A#4', 2], [24, 'A4', 4], [28, 'A#4', 4],
-      [32, 'G4', 2], [34, 'D5', 2], [36, 'A#4', 2], [38, 'G5', 2], [40, 'F5', 4], [44, 'D5', 4],
-      [48, 'A4', 2], [50, 'E5', 2], [52, 'C#5', 2], [54, 'A5', 2], [56, 'A5', 8],
-      [64, 'D6', 2], [66, 'C#6', 2], [68, 'A5', 2], [70, 'F5', 2], [72, 'D5', 4], [76, 'A5', 4],
-      [80, 'A#5', 2], [82, 'A5', 2], [84, 'F5', 2], [86, 'D5', 2], [88, 'A#4', 4], [92, 'F5', 4],
-      [96, 'G5', 2], [98, 'F5', 2], [100, 'D5', 2], [102, 'A#4', 2], [104, 'G4', 4], [108, 'D5', 4],
-      [112, 'E5', 2], [114, 'F5', 2], [116, 'A5', 2], [118, 'C#6', 2], [120, 'D6', 8],
-    ],
-  },
-  {
-    id: 'cristallo',
-    name: 'Il Cristallo',
-    floors: 'piani 21-30',
-    bpm: 138,
-    // Mi minore armonica, i · VI · iv · V. Più lenta e solenne delle altre due:
-    // note lunghe e tenute, per chiudere in tono grandioso invece che frenetico.
-    roots: ['E', 'C', 'A', 'B', 'E', 'C', 'A', 'B'],
-    chords: {
-      E: ['E4', 'G4', 'B4'],
-      C: ['C4', 'E4', 'G4'],
-      A: ['A3', 'C4', 'E4'],
-      B: ['B3', 'D#4', 'F#4'],
-    },
-    bassShape: [0, 0, 0, 1, 0, 0, 1, 0],
-    kick: [0, 8],
-    snare: [4, 12],
-    leadFilter: 2500,
-    melody: [
-      [0, 'B4', 4], [4, 'E5', 2], [6, 'G5', 2], [8, 'F#5', 4], [12, 'E5', 4],
-      [16, 'C5', 4], [20, 'G5', 2], [22, 'E5', 2], [24, 'D5', 4], [28, 'C5', 4],
-      [32, 'A4', 4], [36, 'E5', 2], [38, 'C5', 2], [40, 'B4', 4], [44, 'A4', 4],
-      [48, 'B4', 4], [52, 'D#5', 2], [54, 'F#5', 2], [56, 'B5', 8],
-      [64, 'E6', 2], [66, 'D#6', 2], [68, 'B5', 2], [70, 'G5', 2], [72, 'E5', 4], [76, 'B5', 4],
-      [80, 'C6', 2], [82, 'B5', 2], [84, 'G5', 2], [86, 'E5', 2], [88, 'C5', 4], [92, 'G5', 4],
-      [96, 'A5', 2], [98, 'G5', 2], [100, 'E5', 2], [102, 'C5', 2], [104, 'A4', 4], [108, 'E5', 4],
-      [112, 'F#5', 2], [114, 'G5', 2], [116, 'B5', 2], [118, 'D#6', 2], [120, 'E6', 8],
-    ],
-  },
-  {
-    id: 'guardiano',
-    name: 'Il Guardiano',
-    floors: 'scontro col boss',
-    bpm: 176,
-    // Re minore armonica spinta verso il frigio, col Sol# che sta a tritono dal
-    // Re: e' l'intervallo che da secoli si usa per dire "qui c'e' qualcosa che
-    // non va". Basso martellante e cassa su ogni quarto, senza respiro.
-    roots: ['D', 'D', 'A#', 'A', 'D', 'D', 'A#', 'A'],
-    chords: {
-      D: ['D4', 'F4', 'A4'],
-      'A#': ['A#3', 'D4', 'F4'],
-      A: ['A3', 'C#4', 'E4'],
-    },
-    bassShape: [0, 0, 1, 0, 0, 0, 1, 0],
-    kick: [0, 4, 8, 12],
-    snare: [4, 12],
-    leadFilter: 3600,
-    melody: [
-      [0, 'D5', 2], [2, 'D5', 2], [4, 'D#5', 2], [6, 'D5', 2], [8, 'A4', 4], [12, 'D5', 4],
-      [16, 'F5', 2], [18, 'E5', 2], [20, 'D#5', 2], [22, 'D5', 2], [24, 'C#5', 4], [28, 'D5', 4],
-      [32, 'A#4', 2], [34, 'D5', 2], [36, 'F5', 2], [38, 'A5', 2], [40, 'G#5', 4], [44, 'F5', 4],
-      [48, 'A5', 2], [50, 'G#5', 2], [52, 'F5', 2], [54, 'E5', 2], [56, 'C#5', 8],
-      [64, 'D6', 2], [66, 'C#6', 2], [68, 'A#5', 2], [70, 'A5', 2], [72, 'F5', 4], [76, 'D5', 4],
-      [80, 'A5', 2], [82, 'A#5', 2], [84, 'A5', 2], [86, 'F5', 2], [88, 'D5', 4], [92, 'A4', 4],
-      [96, 'A#5', 2], [98, 'A5', 2], [100, 'F5', 2], [102, 'D5', 2], [104, 'A#4', 4], [108, 'F5', 4],
-      [112, 'E5', 2], [114, 'F5', 2], [116, 'G#5', 2], [118, 'A5', 2], [120, 'D6', 8],
-    ],
-  },
-].map((t) => ({
-  ...t,
-  bass: buildBass(t.roots, t.bassShape),
-  arpeggio: buildArpeggio(t.roots, t.chords),
-}));
-
-/** I primi tre brani seguono i piani; l'ultimo e' riservato agli scontri col boss. */
-const DEPTH_TRACKS = 3;
-export const BOSS_TRACK = 3;
-export const TRACK_COUNT = TRACKS.length;
-
-/** Un brano ogni dieci piani; oltre l'ultimo scaglione resta il terzo. */
-export function trackIndexForDepth(depth) {
-  return Math.max(0, Math.min(DEPTH_TRACKS - 1, Math.floor((depth - 1) / 10)));
 }
 
 const MUSIC_LEVEL = 0.34;
@@ -364,30 +209,32 @@ export class AudioEngine {
   _scheduleStep(step, time, stepDur) {
     const track = this.track;
     track.melody.forEach(([s, note, dur]) => {
-      if (s === step) this._lead(freq(note), time, dur * stepDur * 0.96, track.leadFilter);
+      // Le note lunghe si accorciano un filo: fra una frase e l'altra ci vuole aria.
+      if (s === step) this._lead(freq(note), time, dur * stepDur * 0.9, track.leadFilter, track.leadType);
     });
     track.bass.forEach(([s, note, dur]) => {
-      if (s === step) this._bass(freq(note), time, dur * stepDur * 0.82);
+      if (s === step) this._bass(freq(note), time, dur * stepDur * 0.8);
     });
-    track.arpeggio.forEach(([s, note, dur]) => {
-      if (s === step) this._arp(freq(note), time, dur * stepDur * 0.7);
+    track.arpeggio.forEach(([s, note, dur, tenuto]) => {
+      if (s === step) this._arp(freq(note), time, dur * stepDur * 0.85, tenuto);
     });
-
-    const inBar = step % STEPS_PER_BAR;
-    if (track.kick.includes(inBar)) this._kick(time);
-    if (track.snare.includes(inBar)) this._snare(time);
-    if (inBar % 2 === 0) this._hat(time, inBar % 4 === 0 ? 0.05 : 0.026);
+    track.drums.forEach(([s, tipo]) => {
+      if (s !== step) return;
+      if (tipo === 'kick') this._kick(time);
+      else if (tipo === 'snare') this._snare(time);
+      else this._hat(time, step % 8 === 0 ? 0.045 : 0.022);
+    });
   }
 
   /** Lead a onda quadra con vibrato ritardato: il canto espressivo tipico del chip NES. */
-  _lead(f, time, dur, cutoff = 2900) {
+  _lead(f, time, dur, cutoff = 2900, tipo = 'square') {
     const o = this.ctx.createOscillator();
     const g = this.ctx.createGain();
     const filt = this.ctx.createBiquadFilter();
     filt.type = 'lowpass';
     filt.frequency.value = cutoff + this.intensity * 700;
 
-    o.type = 'square';
+    o.type = tipo;
     o.frequency.setValueAtTime(f, time);
 
     // Il vibrato entra dopo l'attacco, come farebbe un musicista.
@@ -416,17 +263,25 @@ export class AudioEngine {
   }
 
   /** Arpeggio d'accompagnamento, tenuto basso di volume per non coprire il canto. */
-  _arp(f, time, dur) {
+  _arp(f, time, dur, tenuto = false) {
     const o = this.ctx.createOscillator();
     const g = this.ctx.createGain();
     const filt = this.ctx.createBiquadFilter();
     filt.type = 'lowpass';
-    filt.frequency.value = 1800;
+    filt.frequency.value = 1500;
     o.type = 'square';
     o.frequency.setValueAtTime(f, time);
     g.gain.setValueAtTime(0, time);
-    g.gain.linearRampToValueAtTime(0.062, time + 0.006);
-    g.gain.exponentialRampToValueAtTime(0.001, time + dur);
+    if (tenuto) {
+      // Accordo di sostegno: sale piano, tiene, e solo alla fine lascia. Senza
+      // questo si spegneva a meta' battuta e restava un buco nel brano.
+      g.gain.linearRampToValueAtTime(0.05, time + 0.05);
+      g.gain.setValueAtTime(0.05, time + dur * 0.8);
+      g.gain.exponentialRampToValueAtTime(0.001, time + dur);
+    } else {
+      g.gain.linearRampToValueAtTime(0.042, time + 0.006);
+      g.gain.exponentialRampToValueAtTime(0.001, time + dur);
+    }
     o.connect(filt);
     filt.connect(g);
     g.connect(this.musicBus);

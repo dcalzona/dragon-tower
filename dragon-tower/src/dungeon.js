@@ -152,8 +152,15 @@ function buildArenaFloor() {
   const stairs = placeStairsInWall(tiles, arena) || { x: arena.cx, y: arena.y - 1, dir: { x: 0, y: 1 } };
   tiles[stairs.y][stairs.x] = TILES.STAIRS;
 
+  const partenza = {
+    x: arena.cx + 0.5 - stairs.dir.x * (w * 0.34),
+    y: arena.cy + 0.5 - stairs.dir.y * (h * 0.34),
+  };
+  const pilastri = aggiungiPilastri(tiles, arena, partenza, stairs);
+
   return {
     tiles,
+    pilastri,
     rooms: [arena],
     stairs,
     stairsRoom: arena,
@@ -162,11 +169,60 @@ function buildArenaFloor() {
     arenaDoors: [{ x: stairs.x, y: stairs.y }],
     arenaOk: true,
     // Si comincia dal lato opposto alle scale, con il guardiano in mezzo.
-    start: {
-      x: arena.cx + 0.5 - stairs.dir.x * (w * 0.34),
-      y: arena.cy + 0.5 - stairs.dir.y * (h * 0.34),
-    },
+    start: partenza,
   };
+}
+
+/**
+ * Pilastri sparsi nell'arena: bastano un paio di caselle per togliersi dalla
+ * linea di tiro. Sono disposti in modo simmetrico — un'arena vuole ordine, non
+ * un ammasso casuale — e stanno lontani dal centro dove nasce il guardiano,
+ * dal punto in cui arrivi e dalla soglia delle scale.
+ */
+function aggiungiPilastri(tiles, arena, partenza, stairs) {
+  // Posizioni relative all'arena, con la misura del blocco.
+  const schema = [
+    [0.22, 0.26, 2],
+    [0.78, 0.26, 2],
+    [0.22, 0.74, 2],
+    [0.78, 0.74, 2],
+    [0.5, 0.16, 1],
+    [0.5, 0.84, 1],
+    [0.12, 0.5, 1],
+    [0.88, 0.5, 1],
+  ];
+
+  const messi = [];
+  const libero = (x, y, lato) => {
+    for (let dy = 0; dy < lato; dy++) {
+      for (let dx = 0; dx < lato; dx++) {
+        const tx = x + dx;
+        const ty = y + dy;
+        // deve restare dentro l'arena, con un margine dai muri per non creare angoli ciechi
+        if (tx < arena.x + 2 || ty < arena.y + 2) return false;
+        if (tx > arena.x + arena.w - 3 || ty > arena.y + arena.h - 3) return false;
+        // lontano da dove nasce il guardiano
+        if (Math.hypot(tx - arena.cx, ty - arena.cy) < 3.5) return false;
+        // lontano da dove arrivi tu
+        if (Math.hypot(tx - partenza.x, ty - partenza.y) < 3) return false;
+        // e dalla soglia delle scale, che dev'essere sempre avvicinabile
+        if (Math.hypot(tx - stairs.x, ty - stairs.y) < 3) return false;
+      }
+    }
+    return true;
+  };
+
+  schema.forEach(([fx, fy, lato]) => {
+    const x = Math.round(arena.x + fx * (arena.w - lato));
+    const y = Math.round(arena.y + fy * (arena.h - lato));
+    if (!libero(x, y, lato)) return;
+    for (let dy = 0; dy < lato; dy++) {
+      for (let dx = 0; dx < lato; dx++) tiles[y + dy][x + dx] = TILES.WALL;
+    }
+    messi.push({ x, y, lato });
+  });
+
+  return messi;
 }
 
 function buildDungeon(depth) {
