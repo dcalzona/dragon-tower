@@ -23,6 +23,13 @@ import {
   ITEM_TYPES,
 } from './entities.js';
 
+// Raggio di rispetto attorno al giocatore quando nascono i nemici.
+const SPAWN_MIN_DIST = 6.5;
+// Distanza preferita per i rinforzi del guardiano, e il minimo sotto il quale
+// si rinuncia a evocarli: meglio nessun rinforzo che uno addosso al giocatore.
+const SUMMON_MIN_DIST = 3.6;
+const SUMMON_MIN_ASSOLUTO = 2.2;
+
 function createStats() {
   return {
     tempo: 0,
@@ -90,6 +97,14 @@ export class Game {
     this.stairsRoom = dungeon.stairsRoom;
     this.arenaRoom = dungeon.arenaRoom || null;
     this.arenaDoors = dungeon.arenaDoors || [];
+    // Solo i pilastri sono demolibili: i muri perimetrali dell'arena no.
+    this.pilastri = new Set((dungeon.pilastri || []).flatMap((pi) => {
+      const caselle = [];
+      for (let dy = 0; dy < pi.lato; dy++) {
+        for (let dx = 0; dx < pi.lato; dx++) caselle.push(`${pi.x + dx},${pi.y + dy}`);
+      }
+      return caselle;
+    }));
     // Le uscite dell'arena restano chiuse finche' il guardiano e' vivo.
     this.arenaDoors.forEach((d) => {
       this.tiles[d.y][d.x] = TILES.SEALED;
@@ -156,6 +171,8 @@ export class Game {
       const x = room.cx + 0.5 + Math.cos(a) * (room.w * 0.32);
       const y = room.cy + 0.5 + Math.sin(a) * (room.h * 0.32);
       if (isBlocked(this.tiles, x, y)) continue;
+      // Mai in faccia al giocatore appena entrato nell'arena.
+      if (Math.hypot(x - this.player.x, y - this.player.y) < SPAWN_MIN_DIST) continue;
       const type = pickMonsterType(this.depth);
       const m = spawnMonster(type, x, y, this.depth);
       m.maxHp = Math.max(1, Math.round(m.maxHp * this.difficulty.enemyHp));
@@ -168,6 +185,39 @@ export class Game {
     this.notify(def.name, def.subtitle, def.color, 5);
     this.addLog(`${def.name}! I sigilli si chiudono.`, def.color);
     this.sfx('boss');
+  }
+
+  /**
+   * Il guardiano sfonda i ripari. Senza questo bastava mettersi dietro un
+   * pilastro e lo scontro diventava una passeggiata: il boss ci si incastrava
+   * e non riusciva piu' a raggiungerti.
+   */
+  frantumaRiparo(b) {
+    if (!this.pilastri.size) return false;
+    const dir = b.phase === 'charge' ? b.chargeDir : { x: b.chargeDir.x, y: b.chargeDir.y };
+    const lunghezza = Math.hypot(dir.x, dir.y) || 1;
+    const nx = dir.x / lunghezza;
+    const ny = dir.y / lunghezza;
+
+    // Sonda davanti al guardiano, che e' largo: guardo anche di fianco all'asse.
+    for (const lato of [0, 0.7, -0.7]) {
+      for (let d = b.radius * 0.6; d <= b.radius + 0.9; d += 0.35) {
+        const tx = Math.floor(b.x + nx * d - ny * lato);
+        const ty = Math.floor(b.y + ny * d + nx * lato);
+        const chiave = `${tx},${ty}`;
+        if (!this.pilastri.has(chiave)) continue;
+
+        this.pilastri.delete(chiave);
+        this.tiles[ty][tx] = TILES.FLOOR;
+        this.walkableTotal++;
+        this.markExplored(tx, ty);
+        this.burst(tx + 0.5, ty + 0.5, '#8a94ad', 22);
+        this.addFloatingText(tx + 0.5, ty - 0.2, 'CROLLA!', '#c8d2e8');
+        this.sfx('crash');
+        return true;
+      }
+    }
+    return false;
   }
 
   /** Abbattuto il guardiano, i sigilli cadono e il piano si apre. */
@@ -184,6 +234,23 @@ export class Game {
     this.sfx('stairs');
   }
 
+  /**
+   * Nessun mostro deve comparire addosso al giocatore: con poca vita si
+   * morirebbe nell'istante in cui si mette piede sul piano, senza poterci fare
+   * nulla. Restituisce null se dopo qualche tentativo non trova posto — meglio
+   * un nemico in meno che uno in faccia.
+   */
+  puntoLontanoDalGiocatore(room, minima, tentativi = 10) {
+    for (let i = 0; i < tentativi; i++) {
+      const p = room.randomPoint();
+      const x = p.x + 0.5;
+      const y = p.y + 0.5;
+      if (isBlocked(this.tiles, x, y)) continue;
+      if (Math.hypot(x - this.player.x, y - this.player.y) >= minima) return { x, y };
+    }
+    return null;
+  }
+
   spawnFloorContent() {
     const d = this.difficulty;
     const monsterCount = Math.round(Math.min(4 + Math.floor(this.depth * 1.4), 16) * d.enemyCount);
@@ -191,9 +258,10 @@ export class Game {
       const room = this.rooms[1 + Math.floor(Math.random() * (this.rooms.length - 1))];
       if (!room) continue;
       if (this.arenaRoom && room === this.arenaRoom) continue; // l'arena ha i suoi
-      const p = room.randomPoint();
+      const p = this.puntoLontanoDalGiocatore(room, SPAWN_MIN_DIST);
+      if (!p) continue;
       const type = pickMonsterType(this.depth);
-      const m = spawnMonster(type, p.x + 0.5, p.y + 0.5, this.depth);
+      const m = spawnMonster(type, p.x, p.y, this.depth);
       m.maxHp = Math.max(1, Math.round(m.maxHp * d.enemyHp));
       m.hp = m.maxHp;
       m.atk = Math.max(1, Math.round(m.atk * d.enemyAtk));
@@ -638,8 +706,21 @@ export class Game {
     switch (b.phase) {
       case 'chase': {
         const contact = b.radius + p.radius + 0.05;
-        if (dist > contact) this.moveWithCollision(b, nx * b.speed * dt, ny * b.speed * dt);
-        else if (b.attackTimer <= 0 && p.invulnTimer <= 0) this.damagePlayer(b);
+        if (dist > contact) {
+          const prima = { x: b.x, y: b.y };
+          this.moveWithCollision(b, nx * b.speed * dt, ny * b.speed * dt);
+          // Incastrato contro un riparo: dopo un attimo se lo toglie di mezzo.
+          if (Math.hypot(b.x - prima.x, b.y - prima.y) < 0.002) {
+            b.bloccatoDa = (b.bloccatoDa || 0) + dt;
+            if (b.bloccatoDa > 0.9) {
+              b.chargeDir = { x: nx, y: ny };
+              this.frantumaRiparo(b);
+              b.bloccatoDa = 0;
+            }
+          } else {
+            b.bloccatoDa = 0;
+          }
+        } else if (b.attackTimer <= 0 && p.invulnTimer <= 0) this.damagePlayer(b);
         if (b.phaseTimer <= 0 && dist < 11) {
           b.phase = 'aim';
           b.phaseTimer = 0.85;
@@ -661,6 +742,7 @@ export class Game {
         this.moveWithCollision(b, b.chargeDir.x * b.def.chargeSpeed * dt, b.chargeDir.y * b.def.chargeSpeed * dt);
         const moved = Math.hypot(b.x - before.x, b.y - before.y);
         if (dist < b.radius + p.radius + 0.25 && p.invulnTimer <= 0) this.damagePlayer(b, 1.35);
+        if (moved < 0.004) this.frantumaRiparo(b);
         if (b.phaseTimer <= 0 || moved < 0.004) {
           b.phase = 'rest';
           b.phaseTimer = 1.15; // finestra per contrattaccare
@@ -704,10 +786,29 @@ export class Game {
     b.summonsLeft--;
     const n = 2;
     for (let i = 0; i < n; i++) {
-      const a = Math.random() * Math.PI * 2;
-      const x = b.x + Math.cos(a) * 1.6;
-      const y = b.y + Math.sin(a) * 1.6;
-      if (isBlocked(this.tiles, x, y)) continue;
+      // Il rinforzo nasce attorno al guardiano, il piu' lontano possibile dal
+      // giocatore. Non si pretende una distanza fissa: se gli sei addosso,
+      // nessun punto attorno al boss potrebbe rispettarla e il guardiano non
+      // evocherebbe mai proprio quando serve. Si sceglie il punto migliore
+      // disponibile, purche' non ti spunti in faccia.
+      let x = null;
+      let y = null;
+      let migliore = -1;
+      for (let t = 0; t < 20; t++) {
+        const a = (t / 20) * Math.PI * 2 + Math.random() * 0.3;
+        const raggio = 2.2 + (t % 3) * 0.6;
+        const cx = b.x + Math.cos(a) * raggio;
+        const cy = b.y + Math.sin(a) * raggio;
+        if (isBlocked(this.tiles, cx, cy)) continue;
+        const dal = Math.hypot(cx - this.player.x, cy - this.player.y);
+        if (dal > migliore) {
+          migliore = dal;
+          x = cx;
+          y = cy;
+        }
+        if (dal >= SUMMON_MIN_DIST) break; // abbastanza lontano, basta cosi'
+      }
+      if (x === null || migliore < SUMMON_MIN_ASSOLUTO) continue;
       const type = pickMonsterType(this.depth);
       const m = spawnMonster(type, x, y, this.depth);
       m.maxHp = Math.max(1, Math.round(m.maxHp * this.difficulty.enemyHp));

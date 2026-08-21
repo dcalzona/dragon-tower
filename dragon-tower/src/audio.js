@@ -403,6 +403,11 @@ export class AudioEngine {
         this._noiseBurst(t, 0.13, 0.24, 420);
         this._blip('sawtooth', 460, 130, t, 0.24, 0.11);
         break;
+      case 'crash':
+        // pietra che si sbriciola: rumore grave piu' un tonfo
+        this._noiseBurst(t, 0.26, 0.36, 220);
+        this._blip('sawtooth', 160, 48, t, 0.28, 0.24);
+        break;
       case 'boss':
         // tre rintocchi gravi: l'arrivo del guardiano
         [0, 0.26, 0.52].forEach((d, i) => {
